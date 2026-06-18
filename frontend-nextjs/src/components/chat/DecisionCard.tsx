@@ -268,7 +268,7 @@ function SubmissionAudit({ result }: { result: ClaimResult }) {
             <dd className="font-medium text-text">{String(submission.claim_for)}</dd>
           </div>
         )}
-        {(submission?.patient_name as string | undefined) && (
+        {submission?.patient_name != null && (
           <div className="flex justify-between gap-4">
             <dt className="text-text-muted">Patient</dt>
             <dd className="font-medium text-text">{String(submission.patient_name)}</dd>

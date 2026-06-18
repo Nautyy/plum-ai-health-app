@@ -427,8 +427,9 @@ export default function ChatApp({ audience, demoCases }: Props) {
 
   const suggestions = config.followUpSuggestions;
   const inputDisabled = claimLoading || chatLoading || Boolean(loadingClaimId);
-  const showOpsSidebar = caps.showDemoSidebar && caps.showHistorySidebar && demoCases;
-  const showSidebar = showOpsSidebar || caps.showHistorySidebar || (caps.showDemoSidebar && demoCases);
+  const showOpsSidebar = Boolean(caps.showDemoSidebar && caps.showHistorySidebar && demoCases);
+  const showSidebar =
+    showOpsSidebar || caps.showHistorySidebar || Boolean(caps.showDemoSidebar && demoCases);
 
   return (
     <div className="flex h-dvh flex-col bg-[#f7f7f8]">
