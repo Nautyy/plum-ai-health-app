@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "claims_adjudication": "./src/adjudication_api.py:graph"
+  },
+  "env": ".env"
+}
