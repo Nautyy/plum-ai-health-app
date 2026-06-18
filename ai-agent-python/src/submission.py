@@ -120,6 +120,7 @@ def state_to_response(state: dict[str, Any]) -> AdjudicationResponse:
             rejection_reasons=rejection_reasons,
             line_item_decisions=line_item_decisions,
             financial_breakdown=financial_breakdown,
+            ops_reason=state.get("reason", ""),
         ),
         confidence_score=float(state.get("confidence_score", 1.0)),
         execution_trace=trace,

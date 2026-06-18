@@ -84,6 +84,7 @@ def build_member_reason(
     rejection_reasons: list[str],
     line_item_decisions: list[LineItem],
     financial_breakdown: dict[str, Any],
+    ops_reason: str = "",
 ) -> str:
     decision_value = decision.value if isinstance(decision, DecisionType) else str(decision)
     mismatch = _amount_mismatch_note(financial_breakdown)
@@ -141,6 +142,8 @@ def build_member_reason(
     if decision_value == DecisionType.PENDING.value:
         if rejection_reasons:
             return " ".join(member_rejection_message(code) for code in rejection_reasons)
+        if ops_reason.strip():
+            return ops_reason.strip()
         return "We need a bit more information before we can process your claim."
 
     return "We've processed your claim."

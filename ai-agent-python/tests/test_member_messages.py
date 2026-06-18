@@ -44,3 +44,22 @@ def test_rejected_claim_uses_friendly_rejection_copy():
 
     assert "WAITING_PERIOD" not in reason
     assert "waiting period" in reason.lower()
+
+
+def test_pending_gatekeeper_uses_ops_reason():
+    gatekeeper_message = (
+        "You uploaded 2 Prescription(s) but a Hospital Bill is required for "
+        "CONSULTATION claims. Please upload the missing Hospital Bill."
+    )
+    reason = build_member_reason(
+        decision=DecisionType.PENDING,
+        approved_amount=0,
+        rejection_reasons=[],
+        line_item_decisions=[],
+        financial_breakdown={},
+        ops_reason=gatekeeper_message,
+    )
+
+    assert reason == gatekeeper_message
+    assert "Prescription" in reason
+    assert "Hospital Bill" in reason

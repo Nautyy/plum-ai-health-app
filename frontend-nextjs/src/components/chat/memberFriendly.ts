@@ -404,11 +404,25 @@ function amountMismatchNote(result: ClaimResult): string | null {
 
 /** Human-readable summary for the member portal — never expose internal reason codes. */
 export function memberFriendlyReason(result: ClaimResult): string {
+  const decision = result.decision;
+
+  if (decision === "PENDING") {
+    if (result.rejection_reasons?.length) {
+      return result.rejection_reasons.map(memberRejectionReason).join(" ");
+    }
+    if (result.reason?.trim()) {
+      return result.reason.trim();
+    }
+    if (result.member_reason?.trim()) {
+      return result.member_reason.trim();
+    }
+    return "We need a bit more information before we can process your claim.";
+  }
+
   if (result.member_reason?.trim()) {
     return result.member_reason.trim();
   }
 
-  const decision = result.decision;
   const approved = result.approved_amount;
   const lineItems = buildMemberLineItems(result);
   const rejected = lineItems.filter((item) => !item.approved);
@@ -463,13 +477,6 @@ export function memberFriendlyReason(result: ClaimResult): string {
 
   if (decision === "MANUAL_REVIEW") {
     return "We need a specialist on our team to review your claim. We'll get back to you within 2–3 business days.";
-  }
-
-  if (decision === "PENDING") {
-    if (result.rejection_reasons?.length) {
-      return result.rejection_reasons.map(memberRejectionReason).join(" ");
-    }
-    return "We need a bit more information before we can process your claim.";
   }
 
   return "We've processed your claim.";

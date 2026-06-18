@@ -103,6 +103,10 @@ export default function ClaimFormCard({ loading, variant = "member", onSubmit }:
     ]);
   };
 
+  const removeDocument = (fileId: string) => {
+    setDocuments((prev) => prev.filter((doc) => doc.file_id !== fileId));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -129,16 +133,6 @@ export default function ClaimFormCard({ loading, variant = "member", onSubmit }:
     if (untyped.length > 0) {
       setFormError(`Select document type for: ${untyped.map((d) => d.file_name).join(", ")}`);
       return;
-    }
-
-    if (category === "CONSULTATION") {
-      const types = docs.map((d) => d.actual_type);
-      if (!types.includes("PRESCRIPTION") || !types.includes("HOSPITAL_BILL")) {
-        setFormError(
-          "Consultation claims need a PRESCRIPTION and a HOSPITAL_BILL (not pharmacy bill)."
-        );
-        return;
-      }
     }
 
     const parsedAmount = Number(claimedAmount.replace(/,/g, ""));
@@ -339,6 +333,10 @@ export default function ClaimFormCard({ loading, variant = "member", onSubmit }:
               if (files) Array.from(files).forEach(addFile);
             }}
           />
+          <p className="mt-1 text-xs text-text-muted">
+            Required document types for your category are checked after you submit — you will get a
+            specific message if something is missing or wrong.
+          </p>
         </label>
       </div>
 
@@ -349,7 +347,7 @@ export default function ClaimFormCard({ loading, variant = "member", onSubmit }:
               key={d.file_id}
               className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-muted px-3 py-2 text-sm"
             >
-              <span className="font-medium text-text">{d.file_name}</span>
+              <span className="min-w-0 flex-1 truncate font-medium text-text">{d.file_name}</span>
               <select
                 className="rounded-lg border border-border px-2 py-1 text-xs"
                 value={d.actual_type}
@@ -365,6 +363,14 @@ export default function ClaimFormCard({ loading, variant = "member", onSubmit }:
                   <option key={t} value={t}>{t.replace("_", " ")}</option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={() => removeDocument(d.file_id)}
+                className="rounded-lg px-2 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-50"
+                aria-label={`Remove ${d.file_name}`}
+              >
+                Remove
+              </button>
             </li>
           ))}
         </ul>
