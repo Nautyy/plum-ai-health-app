@@ -2,7 +2,7 @@
 
 Automated health insurance claims adjudication for Plum's AI Engineer assignment. The system accepts claim submissions with medical documents, validates them early, extracts structured data, applies policy rules from JSON, and returns explainable decisions with a full execution trace.
 
-**Evaluation: 12/12 assignment test cases pass** — see [EVAL_REPORT.md](./EVAL_REPORT.md).
+**Evaluation: 12/12 assignment test cases + 7/7 OCR image cases pass** — see [EVAL_REPORT.md](./EVAL_REPORT.md).
 
 ---
 
@@ -14,8 +14,8 @@ When an employee submits a health insurance claim, they upload medical documents
 |-------------|----------------|
 | Accept claim submissions | Member UI (`/`) and ops console (`/ops`) |
 | Catch document problems early | `gatekeeper_agent` → `PENDING` with specific, actionable messages |
-| Extract structured information | `ocr_agent` (Groq vision) + tiered `extraction_agent` (regex → LLM → fallback) |
-| Make claim decisions | `policy_engine` — deterministic rules from `policy_terms.json` |
+| Extract structured information | `ocr_agent` (Groq vision) + LLM-first `extraction_agent` (regex gap-fill for prefilled fixtures) |
+| Make claim decisions | `policy_engine` — limits/coverage from `policy_terms.json`; intent rules in `policy/rules_config.py` |
 | Explain every decision | `execution_trace[]` on every response |
 | Handle failures gracefully | Degraded steps reduce confidence; pipeline never crashes |
 
@@ -115,7 +115,7 @@ flowchart LR
     INGEST --> OCR[ocr_agent]
     OCR --> GK[gatekeeper_agent]
     GK -->|fail| DEC[decision_consolidator]
-    GK -->|pass| EXT[extraction_agent]
+    GK -->|pass| EXT[extraction_agent<br/>LLM-first → regex gap-fill]
     EXT --> SV[submission_validator]
     SV -->|fail| DEC
     SV -->|pass| POL[policy_engine]
@@ -129,15 +129,15 @@ flowchart LR
 | **ingest_submission** | Deterministic | Parse input, initialize state |
 | **ocr_agent** | Groq vision | Extract text from images/PDFs |
 | **gatekeeper_agent** | Rules + optional LLM | Required doc types, readability, patient/roster match |
-| **extraction_agent** | Regex → LLM → fallback | Patient, diagnosis, line items, amounts |
+| **extraction_agent** | LLM-first → regex gap-fill | Patient, diagnosis, line items, amounts |
 | **submission_validator** | Deterministic | Cross-check form date and hospital vs documents |
-| **policy_engine** | Deterministic | Waiting periods, co-pay, limits, exclusions, fraud |
+| **policy_engine** | Deterministic | Waiting periods, co-pay, limits, intent-based exclusions, fraud |
 | **decision_consolidator** | Deterministic | Final decision, confidence penalties |
 | **format_response** | Deterministic | Build API response |
 
 **Early stop:** Gatekeeper or submission validator failure → `PENDING`, skips policy. Wrong documents never reach adjudication logic.
 
-**LLM usage:** Groq for OCR, tier-2 extraction, gatekeeper ambiguity, and claim Q&A. Policy adjudication is pure Python — no LLM-as-judge.
+**LLM usage:** Groq for OCR, extraction (primary path for uploaded images), gatekeeper ambiguity, and claim Q&A. Policy adjudication is pure Python — coverage/roster/limits from JSON; clinical intent matching in `policy/rules_config.py` (policy file unchanged).
 
 ### Example outcomes
 
@@ -154,14 +154,14 @@ Full traces for all 12 cases: [EVAL_REPORT.md](./EVAL_REPORT.md).
 | Decision | Chosen | Rejected |
 |----------|--------|----------|
 | Document validation | Deterministic gatekeeper; LLM only for ambiguity | Full LLM gatekeeper |
-| Extraction | Tier 1 regex → tier 2 Groq → tier 3 fallback | LLM-only extraction |
-| Policy | `DynamicPolicyEngine` reads JSON | LLM-as-policy-judge |
+| Extraction | LLM-first for OCR/free-form; regex gap-fill for structured prefilled fixtures | LLM-only or regex-only extraction |
+| Policy | JSON for limits/roster/coverage; intent rules in code (`policy/rules_config.py`) | LLM-as-policy-judge or editing assignment policy JSON |
 | Architecture | 3 services (UI / BFF / agent) | Single monolith |
 | Member submit | Preview then record | Single submit without preview |
 
 ### Key trade-offs
 
-**Deterministic gatekeeper first** — Rules in `document_validator.py` handle missing docs, wrong types, unreadable files, and patient mismatches. LLM runs only when document types are ambiguous. TC001–TC003 pass with `used_llm: false`. 32 unit tests run without an API key.
+**Deterministic gatekeeper first** — Rules in `document_validator.py` and `document_type.py` handle missing docs, wrong types, unreadable files, and patient mismatches. Document types are inferred via intent scoring; LLM runs when type is `UNKNOWN` or low confidence. TC001–TC003 pass with `used_llm: false`. 48 unit tests run without an API key for gatekeeper/policy paths.
 
 **Async queue at scale** — Current design uses synchronous LangGraph invoke per claim. At higher volume, claims would be queued (SQS/Redis) with worker pools and poll/webhook completion.
 
@@ -253,12 +253,13 @@ Component interfaces: [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md).
 ```bash
 cd ai-agent-python
 
-uv run pytest                              # 32 unit tests
+uv run pytest                              # 48 unit tests
 uv run python scripts/run_test_cases.py    # 12 assignment cases
+uv run python scripts/run_ocr_test_cases.py  # 7 OCR image cases (requires GROQ_API_KEY)
 uv run python scripts/generate_eval_report.py
 ```
 
-Test input: `assignment/test_cases.json`. Policy config: `ai-agent-python/config/policy_terms.json`.
+Test inputs: `assignment/test_cases.json`, `sample-documents/ocr_test_cases.json`. Policy config: `assignment/policy_terms.json` (mirrored at `ai-agent-python/config/policy_terms.json`) — **not modified**; intent phrases live in `ai-agent-python/src/policy/rules_config.py`.
 
 ---
 
@@ -269,7 +270,7 @@ Test input: `assignment/test_cases.json`. Policy config: `ai-agent-python/config
 | Working system | This repository — setup above |
 | Architecture document | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 | Component contracts | [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md) |
-| Eval report (12/12) | [EVAL_REPORT.md](./EVAL_REPORT.md) |
+| Eval report (12/12 + 7/7 OCR) | [EVAL_REPORT.md](./EVAL_REPORT.md) |
 
 ---
 

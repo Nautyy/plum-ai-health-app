@@ -1,4 +1,8 @@
-"""Structured data extraction from document text."""
+"""Structured data extraction from document text.
+
+Regex/label parsing is a fast gap-fill for structured test fixtures only.
+OCR and free-form uploads are handled by the LLM extraction tier in agents.py.
+"""
 
 from __future__ import annotations
 
@@ -61,9 +65,41 @@ def normalize_ocr_text(text: str) -> str:
     return re.sub(r"\*+", "", text)
 
 
+_INVALID_PATIENT_CAPTURES = frozenset(
+    {"details", "information", "name", "details:", "information:", "name:"}
+)
+
+
+def is_plausible_person_name(value: str) -> bool:
+    cleaned = _clean_line(value).strip(": ").strip()
+    if not cleaned or len(cleaned) < 3:
+        return False
+    if cleaned.lower() in _INVALID_PATIENT_CAPTURES:
+        return False
+    if re.match(r"^(details|information|name)\s*:?\s*$", cleaned, re.IGNORECASE):
+        return False
+    parts = [part for part in cleaned.split() if re.search(r"[A-Za-z]", part)]
+    return len(parts) >= 2
+
+
+def extract_patient_name(text: str) -> Optional[str]:
+    """Extract patient name from OCR text; ignores header lines like 'Patient Details:'."""
+    normalized = normalize_ocr_text(text)
+    for label in ("Patient Name", "Patient"):
+        for line in normalized.splitlines():
+            cleaned = _clean_line(line)
+            match = re.search(rf"{re.escape(label)}\s*:?\s*(.+)", cleaned, re.IGNORECASE)
+            if not match:
+                continue
+            candidate = match.group(1).strip()
+            if is_plausible_person_name(candidate):
+                return _clean_line(candidate)
+    return None
+
+
 def parse_text_summary(text: str) -> ExtractedMedicalData:
     text = normalize_ocr_text(text)
-    patient = _extract_field(text, ["Patient", "Patient Name"])
+    patient = extract_patient_name(text) or _extract_field(text, ["Patient Name"])
     diagnosis = _extract_field(text, ["Diagnosis"])
     treatment = _extract_field(text, ["Treatment", "Procedure"])
     doctor = _extract_field(text, ["Doctor", "Doctor Name"])

@@ -15,7 +15,8 @@
     "edge-cases/prescription_rajesh.jpg": "Prescription for patient mismatch test",
     "edge-cases/bill_arjun.jpg": "Hospital bill for Arjun Mehta (mismatch)",
     "edge-cases/blurry_pharmacy_bill.jpg": "Heavily blurred unreadable bill",
-    "dental/dental_bill_priya.jpg": "Dental bill with cosmetic + covered items"
+    "dental/dental_bill_priya.jpg": "Dental bill with cosmetic + covered items",
+    "diagnostics/lab_report_rajesh.jpg": "NABL lab report — Rajesh Kumar, CBC + Dengue NS1"
   },
   "test_cases": [
     {

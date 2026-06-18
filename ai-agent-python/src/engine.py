@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
-import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
+from policy.exclusion_intent import check_claim_exclusions
+from policy.line_items import category_supports_line_items, evaluate_category_line_items
+from policy.pre_auth_intent import check_pre_auth_required
+from policy.rules_config import PER_CLAIM_LIMIT_EXEMPT_CATEGORIES
+from policy.waiting_intent import matches_waiting_condition
 from schemas import (
     ClaimSubmission,
     DecisionType,
@@ -131,73 +135,6 @@ def _member_join_date(
     return _parse_date(_policy_effective_date(policy))
 
 
-def _word_boundary_match(text: str, keyword: str) -> bool:
-    pattern = rf"\b{re.escape(keyword)}\b"
-    return bool(re.search(pattern, text, re.IGNORECASE))
-
-
-def _matches_waiting_condition(text: str, condition: str) -> bool:
-    text_lower = text.lower()
-    condition_lower = condition.lower().replace("_", " ")
-    aliases = {
-        "diabetes": ["diabetes", "diabetic", "t2dm", "type 2 diabetes"],
-        "hypertension": ["hypertension", "htn", "high blood pressure"],
-        "thyroid_disorders": ["thyroid", "hypothyroid", "hyperthyroid"],
-        "joint_replacement": ["joint replacement", "knee replacement", "hip replacement"],
-        "maternity": ["maternity", "pregnancy", "prenatal"],
-        "mental_health": ["mental health", "depression", "anxiety disorder"],
-        "obesity_treatment": ["obesity", "bariatric", "weight loss", "morbid obesity"],
-        "hernia": ["hernia"],
-        "cataract": ["cataract"],
-    }
-    terms = aliases.get(condition, [condition_lower])
-    for term in terms:
-        if " " in term or len(term) <= 4:
-            if term in text_lower:
-                return True
-        elif _word_boundary_match(text_lower, term):
-            return True
-    return False
-
-
-def _check_exclusions(policy: dict, extracted: ExtractedMedicalData) -> list[str]:
-    reasons = []
-    combined = " ".join(
-        filter(
-            None,
-            [
-                extracted.diagnosis or "",
-                extracted.treatment or "",
-                " ".join(item.description for item in extracted.line_items),
-            ],
-        )
-    ).lower()
-
-    for exclusion in policy.get("exclusions", {}).get("conditions", []):
-        exc_lower = exclusion.lower()
-        if any(
-            k in combined
-            for k in (
-                "obesity",
-                "bariatric",
-                "weight loss",
-                "diet plan",
-                "diet program",
-                "morbid obesity",
-            )
-        ) and any(k in exc_lower for k in ("obesity", "bariatric", "weight loss")):
-            reasons.append("EXCLUDED_CONDITION")
-            break
-        if "bariatric" in exc_lower and "bariatric" in combined:
-            reasons.append("EXCLUDED_CONDITION")
-            break
-        if "cosmetic" in exc_lower and "cosmetic" in combined:
-            reasons.append("EXCLUDED_CONDITION")
-            break
-
-    return reasons
-
-
 def _check_waiting_period(
     policy: dict,
     member: dict,
@@ -207,7 +144,7 @@ def _check_waiting_period(
     reasons: list[str] = []
     eligible_from: Optional[str] = None
     join_date = _member_join_date(policy, member)
-    combined = " ".join(filter(None, [extracted.diagnosis or "", extracted.treatment or ""]))
+    clinical = " ".join(filter(None, [extracted.diagnosis or "", extracted.treatment or ""]))
 
     waiting = policy.get("waiting_periods", {})
     initial_days = int(waiting.get("initial_waiting_period_days", 0) or 0)
@@ -221,7 +158,7 @@ def _check_waiting_period(
             wait_days = int(days)
         except (TypeError, ValueError):
             continue
-        if _matches_waiting_condition(combined, condition):
+        if matches_waiting_condition(policy, clinical, condition):
             eligible = join_date + timedelta(days=wait_days)
             if treat_date < eligible:
                 reasons.append("WAITING_PERIOD")
@@ -236,66 +173,6 @@ def _is_network_hospital(policy: dict, hospital_name: Optional[str]) -> bool:
         return False
     networks = policy.get("network_hospitals", [])
     return any(n.lower() in hospital_name.lower() or hospital_name.lower() in n.lower() for n in networks)
-
-
-def _check_pre_auth(
-    policy: dict, category: str, extracted: ExtractedMedicalData, claimed_amount: float, pre_auth_id: Optional[str]
-) -> list[str]:
-    if pre_auth_id:
-        return []
-    cat_key = _normalize_category(category)
-    cat_rules = policy.get("opd_categories", {}).get(cat_key, {})
-    threshold = cat_rules.get("pre_auth_threshold", 0)
-    high_value_tests = [t.upper() for t in cat_rules.get("high_value_tests_requiring_pre_auth", [])]
-
-    combined_tests = " ".join(extracted.tests_ordered).upper()
-    line_text = " ".join(item.description for item in extracted.line_items).upper()
-    all_text = f"{combined_tests} {line_text} {extracted.diagnosis or ''}".upper()
-
-    for test in high_value_tests:
-        if test in all_text and claimed_amount > threshold:
-            return ["PRE_AUTH_MISSING"]
-    return []
-
-
-def _evaluate_dental_line_items(policy: dict, extracted: ExtractedMedicalData) -> tuple[list[LineItem], float]:
-    cat_rules = policy.get("opd_categories", {}).get("dental", {})
-    covered = [p.lower() for p in cat_rules.get("covered_procedures", [])]
-    excluded = [p.lower() for p in cat_rules.get("excluded_procedures", [])]
-
-    decisions: list[LineItem] = []
-    approved_total = 0.0
-
-    for item in extracted.line_items:
-        desc_lower = item.description.lower()
-        is_excluded = any(exc in desc_lower or desc_lower in exc for exc in excluded)
-        is_covered = any(cov in desc_lower or desc_lower in cov for cov in covered)
-
-        if is_excluded:
-            decisions.append(
-                LineItem(
-                    description=item.description,
-                    amount=item.amount,
-                    approved=False,
-                    rejection_reason="COSMETIC_EXCLUSION",
-                )
-            )
-        elif is_covered:
-            decisions.append(
-                LineItem(description=item.description, amount=item.amount, approved=True)
-            )
-            approved_total += item.amount
-        else:
-            decisions.append(
-                LineItem(
-                    description=item.description,
-                    amount=item.amount,
-                    approved=False,
-                    rejection_reason="NOT_COVERED",
-                )
-            )
-
-    return decisions, approved_total
 
 
 def _apply_financials(
@@ -419,12 +296,12 @@ class DynamicPolicyEngine:
                 fraud_signals=fraud_signals,
             )
 
-        exclusion_reasons = _check_exclusions(policy, extracted)
-        if exclusion_reasons:
+        exclusion = check_claim_exclusions(policy, extracted, submission.claim_category)
+        if exclusion:
             return PolicyEvaluationResult(
                 decision=DecisionType.REJECTED,
-                reason="Treatment falls under policy exclusions (obesity/weight loss programs).",
-                rejection_reasons=exclusion_reasons,
+                reason=f"Treatment falls under policy exclusions ({exclusion.label}).",
+                rejection_reasons=[exclusion.reason_code],
                 confidence=0.95,
             )
 
@@ -442,25 +319,29 @@ class DynamicPolicyEngine:
                 eligible_from_date=eligible_from,
             )
 
-        pre_auth_reasons = _check_pre_auth(
+        pre_auth_test = check_pre_auth_required(
             policy,
             submission.claim_category,
             extracted,
             submission.claimed_amount,
             submission.pre_authorization_id,
         )
-        if pre_auth_reasons:
+        if pre_auth_test:
             return PolicyEvaluationResult(
                 decision=DecisionType.REJECTED,
                 reason=(
-                    "Pre-authorization required for high-value MRI/CT/PET diagnostic tests "
-                    "above ₹10,000 but was not obtained. Please obtain pre-authorization and resubmit."
+                    f"Pre-authorization required for {pre_auth_test} above the policy threshold "
+                    "but was not obtained. Please obtain pre-authorization and resubmit."
                 ),
-                rejection_reasons=pre_auth_reasons,
+                rejection_reasons=["PRE_AUTH_MISSING"],
             )
 
         per_claim_limit = policy.get("coverage", {}).get("per_claim_limit")
-        if cat_key != "dental" and per_claim_limit and submission.claimed_amount > per_claim_limit:
+        if (
+            cat_key not in PER_CLAIM_LIMIT_EXEMPT_CATEGORIES
+            and per_claim_limit
+            and submission.claimed_amount > per_claim_limit
+        ):
             return PolicyEvaluationResult(
                 decision=DecisionType.REJECTED,
                 reason=(
@@ -472,12 +353,14 @@ class DynamicPolicyEngine:
 
         hospital = extracted.hospital_name or submission.hospital_name
 
-        if cat_key == "dental":
-            line_decisions, approved_base = _evaluate_dental_line_items(policy, extracted)
+        if category_supports_line_items(policy, cat_key):
+            line_decisions, approved_base = evaluate_category_line_items(
+                policy, cat_key, extracted
+            )
             if approved_base <= 0:
                 return PolicyEvaluationResult(
                     decision=DecisionType.REJECTED,
-                    reason="No covered dental procedures found in the claim.",
+                    reason="No covered procedures found in the claim.",
                     rejection_reasons=["NO_COVERED_ITEMS"],
                     line_item_decisions=line_decisions,
                 )
@@ -487,7 +370,7 @@ class DynamicPolicyEngine:
             )
             breakdown = _enrich_financial_breakdown(submission, extracted, breakdown)
             decision = DecisionType.PARTIAL if partial else DecisionType.APPROVED
-            reason = "Partial approval: covered procedures approved; cosmetic/excluded items rejected."
+            reason = "Partial approval: covered procedures approved; excluded items rejected."
             if partial:
                 rejected = [d for d in line_decisions if not d.approved]
                 if rejected:

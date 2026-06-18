@@ -45,6 +45,31 @@ def test_dental_partial_approval():
     assert result.approved_amount == 8000
 
 
+def test_dental_partial_approval_with_cosmetic_label():
+    """OCR may include '(cosmetic)' on line items; must not blanket-reject the claim."""
+    engine = DynamicPolicyEngine()
+    submission = ClaimSubmission(
+        member_id="EMP002",
+        policy_id="PLUM_GHI_2024",
+        claim_category="DENTAL",
+        treatment_date="2024-10-15",
+        claimed_amount=12000,
+    )
+    extracted = ExtractedMedicalData(
+        patient_name="Priya Singh",
+        hospital_name="Smile Dental Clinic",
+        treatment_date="2024-10-15",
+        total_amount=12000,
+        line_items=[
+            {"description": "Root Canal Treatment (molar)", "amount": 8000},
+            {"description": "Teeth Whitening (cosmetic)", "amount": 4000},
+        ],
+    )
+    result = engine.evaluate(submission, extracted)
+    assert result.decision.value == "PARTIAL"
+    assert result.approved_amount == 8000
+
+
 def test_llm_null_lists_coerced():
     data = ExtractedMedicalData.model_validate(
         {

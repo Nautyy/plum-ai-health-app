@@ -7,41 +7,15 @@ from collections import Counter
 from typing import Optional
 
 from engine import load_policy
-from extractors.structured_parser import parse_text_summary
+from extractors.structured_parser import (
+    extract_patient_name,
+    is_plausible_person_name,
+    parse_text_summary,
+)
+from llm.patient import extract_patient_name_llm
+from ocr.document_ocr import OCR_SOURCES
 from schemas import ClaimDocument, ClaimSubmission, GatekeeperResult
-
-
-def _infer_type_from_doc(doc: ClaimDocument) -> str:
-    """Infer document type from declared type or extracted content — not filenames."""
-    if doc.actual_type and doc.actual_type.strip():
-        return doc.actual_type.strip().upper()
-
-    summary = (doc.content_summary or "").strip()
-    if not summary:
-        return "UNKNOWN"
-
-    lower = summary.lower()
-    parsed = parse_text_summary(summary)
-    has_line_items = bool(parsed.line_items) or "line_items:" in lower
-    has_amount = parsed.total_amount is not None or _has_parseable_amount(summary)
-
-    if parsed.tests_ordered or "test name:" in lower or "nabl" in lower:
-        return "LAB_REPORT"
-
-    if parsed.diagnosis or parsed.treatment or parsed.doctor_name:
-        if not has_line_items and not has_amount:
-            return "PRESCRIPTION"
-
-    if "drug lic" in lower or ("pharmacy" in lower and has_amount):
-        return "PHARMACY_BILL"
-
-    if has_line_items or has_amount:
-        return "PHARMACY_BILL" if "pharmacy" in lower else "HOSPITAL_BILL"
-
-    if parsed.patient_name and (parsed.diagnosis or parsed.doctor_name):
-        return "PRESCRIPTION"
-
-    return "UNKNOWN"
+from validators.document_type import infer_document_type, is_document_unreadable
 
 
 def _find_member(policy: dict, member_id: str) -> Optional[dict]:
@@ -144,52 +118,6 @@ def _member_id_mismatch_message(
     )
 
 
-def _has_parseable_amount(text: str) -> bool:
-    return bool(
-        re.search(
-            r"(?:total\s*amount|total|amount|rs\.?|₹|inr)\s*:?\s*[\d,]+",
-            text,
-            re.IGNORECASE,
-        )
-    )
-
-
-def _is_likely_unreadable(doc: ClaimDocument) -> bool:
-    """Detect unreadable uploads from OCR output — not filename keywords."""
-    if not doc.file_content_base64:
-        return False
-
-    summary = (doc.content_summary or "").strip()
-    if not summary:
-        return True
-
-    if summary.upper().startswith("UNREADABLE"):
-        return True
-
-    if doc.content_source != "groq_vision":
-        return False
-
-    inferred = _infer_type_from_doc(doc)
-    if inferred not in ("PHARMACY_BILL", "HOSPITAL_BILL"):
-        return False
-
-    if not _has_parseable_amount(summary):
-        return True
-
-    if inferred == "PHARMACY_BILL" and not _extract_patient_name(doc):
-        return True
-
-    return False
-
-
-def _document_is_unreadable(doc: ClaimDocument) -> bool:
-    if doc.quality and doc.quality.upper() == "UNREADABLE":
-        return True
-    if doc.file_content_base64 and not (doc.content_summary or "").strip():
-        return True
-    return _is_likely_unreadable(doc)
-
-
 def _clean_patient_name(name: str) -> str:
     cleaned = re.sub(r"^[\s*\-•]+", "", name).strip().strip("*")
     return re.sub(r"\s+", " ", cleaned)
@@ -199,14 +127,21 @@ def _extract_patient_name(doc: ClaimDocument) -> Optional[str]:
     if doc.patient_name_on_doc:
         return _clean_patient_name(doc.patient_name_on_doc)
     summary = doc.content_summary or ""
-    for line in summary.splitlines():
-        cleaned = re.sub(r"^[\s*\-•]+", "", line).strip().strip("*")
-        match = re.search(r"patient\s+name\s*:?\s*(.+)", cleaned, re.IGNORECASE)
-        if match:
-            return _clean_patient_name(match.group(1))
-        match = re.search(r"patient\s*:?\s*(.+)", cleaned, re.IGNORECASE)
-        if match and not match.group(1).lower().startswith("name"):
-            return _clean_patient_name(match.group(1))
+    if not summary.strip():
+        return None
+
+    for candidate in (
+        extract_patient_name(summary),
+        parse_text_summary(summary).patient_name,
+    ):
+        if candidate and is_plausible_person_name(candidate):
+            return _clean_patient_name(candidate)
+
+    if doc.content_source in OCR_SOURCES or doc.file_content_base64:
+        llm_name = extract_patient_name_llm(summary)
+        if llm_name and is_plausible_person_name(llm_name):
+            return _clean_patient_name(llm_name)
+
     return None
 
 
@@ -248,14 +183,15 @@ def validate_documents(submission: ClaimSubmission, policy: Optional[dict] = Non
     patient_names: list[str] = []
 
     for doc in submission.documents:
-        doc_type = _infer_type_from_doc(doc)
+        type_result = infer_document_type(doc, policy)
+        doc_type = type_result.doc_type
         detected.append(doc_type)
 
-        if _document_is_unreadable(doc):
+        patient = _extract_patient_name(doc)
+        if is_document_unreadable(doc, doc_type, policy, patient):
             unreadable.append(doc.file_name or doc.file_id)
             continue
 
-        patient = _extract_patient_name(doc)
         if patient:
             patient_names.append(patient)
 

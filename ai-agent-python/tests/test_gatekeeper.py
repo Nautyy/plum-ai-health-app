@@ -135,6 +135,30 @@ def test_same_patient_with_ocr_whitespace_variants():
     assert result.passed
 
 
+def test_hospital_bill_markdown_patient_details_header():
+    """Groq OCR sometimes emits 'Patient Details:' headers — must not parse as a name."""
+    docs = [
+        ClaimDocument(
+            file_id="F1",
+            actual_type="PRESCRIPTION",
+            content_summary="Patient: Rajesh Kumar\nDiagnosis: Viral Fever",
+        ),
+        ClaimDocument(
+            file_id="F2",
+            actual_type="HOSPITAL_BILL",
+            content_summary=(
+                "Patient Details:\n"
+                "Patient Name: Rajesh Kumar\n"
+                "Age/Gender: 39 / Male\n"
+                "Total Amount: 1500"
+            ),
+        ),
+    ]
+    result = validate_documents(_submission(docs))
+    assert result.passed
+    assert "Rajesh Kumar" in result.patient_names_found
+
+
 def test_infer_type_uses_content_not_filename():
     docs = [
         ClaimDocument(

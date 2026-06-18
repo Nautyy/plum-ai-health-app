@@ -143,9 +143,12 @@ Each updated document gets:
 ### Behavior
 
 1. Skip OCR if `content_summary` already present (unless base64 provided without summary).
-2. Images → Groq vision model; prompt returns `UNREADABLE` for illegible images.
-3. PDF → pypdf text extraction.
-4. On API failure → `degraded=True`, empty summary.
+2. **Images** — autocontrast/sharpen preprocessing (phone photos), then Groq vision with Indian medical document prompt (`ocr/prompts.py` aligned with `sample_documents_guide.md`).
+3. **PDF text** — pypdf text extraction (multi-page joined).
+4. **Scanned PDF** — if pypdf returns empty, rasterize each page (PyMuPDF) and vision OCR per page.
+5. **Partial/stamped/handwritten** — best-effort text; `OCR_NOTE:` lines flag obscured, regional, or partial fields (degraded, not UNREADABLE).
+6. On fully illegible image → `UNREADABLE` → `quality=UNREADABLE`.
+7. On API failure → `degraded=True`, empty summary.
 
 ### Errors
 
@@ -177,15 +180,17 @@ GatekeeperResult(
 
 ### Rules (deterministic, in order)
 
-1. **Unreadable** — empty OCR, `quality=UNREADABLE`, filename/heuristic blur detection → stop with re-upload message.
+1. **Unreadable** — empty OCR, `quality=UNREADABLE`, OCR `UNREADABLE` token, or missing required fields per doc type (`document_readability` in `policy/rules_config.py`) → stop with re-upload message.
 2. **Missing required types** — from `policy_terms.json → document_requirements[category].required`.
 3. **Wrong document** — e.g. two prescriptions for CONSULTATION → specific message naming uploaded vs required type.
 4. **Patient mismatch across docs** — different names on prescription vs bill.
 5. **Member ID mismatch** — document patient not on member's roster (primary + dependents).
 
+Document type inference: `validators/document_type.py` scores intent phrases from `policy/rules_config.py` (not added to policy JSON). Patient names: label parse → LLM fallback (`llm/patient.py`) for OCR-sourced docs.
+
 ### LLM fallback
 
-Runs only when `detected_types` contains `UNKNOWN` or ambiguous content. Model: `GATEKEEPER_MODEL`. On LLM failure → `passed=false`, degraded → MANUAL_REVIEW.
+Runs when `detected_types` contains `UNKNOWN`, or when inferred type confidence is below threshold (`needs_type_verification`). Model: `GATEKEEPER_MODEL`. On LLM failure → `passed=false`, degraded → MANUAL_REVIEW.
 
 ### Early stop effect
 
@@ -227,9 +232,9 @@ Runs only when `detected_types` contains `UNKNOWN` or ambiguous content. Model: 
 
 ### Tier selection
 
-- **Tier 1:** Regex/label parser on each document summary.
-- **Tier 2:** Groq structured output if OCR-sourced or tier 1 insufficient.
-- **Tier 3:** Fallback with `claimed_amount` as total; confidence ≤ 0.65.
+- **Tier 2 (primary):** Groq structured extraction for OCR-sourced docs, free-form text, and any non-prefilled upload.
+- **Tier 1 (gap-fill):** Regex/label parser on structured prefilled fixtures (`content_source: prefilled`, or `line_items:` JSON in summary). Merged after LLM to fill missing fields.
+- **Tier 3:** Fallback with `claimed_amount` as total; confidence ≤ 0.65 if LLM fails.
 
 ### Errors
 
@@ -294,7 +299,9 @@ SubmissionValidationResult(
 evaluate(submission: ClaimSubmission, extracted: ExtractedMedicalData) -> PolicyEvaluationResult
 ```
 
-Policy loaded from `config/policy_terms.json` at startup (reload per call via `load_policy()`).
+Policy loaded from `config/policy_terms.json` at startup (reload per call via `load_policy()`). **Assignment policy JSON is not extended** — clinical intent phrases (exclusions, waiting conditions, pre-auth tests, document-type signals) live in `policy/rules_config.py`.
+
+Supporting modules: `policy/exclusion_intent.py`, `policy/waiting_intent.py`, `policy/pre_auth_intent.py`, `policy/line_items.py`, `policy/intent_match.py`.
 
 ### Output
 
@@ -316,11 +323,11 @@ PolicyEvaluationResult(
 
 1. Member exists in policy roster
 2. Category covered under plan
-3. Waiting period (e.g. diabetes 90 days per `policy_terms.json`)
-4. Excluded treatments (cosmetic, infertility, etc.)
-5. Pre-authorization for high-cost diagnostics (MRI)
-6. Per-claim and annual sub-limits
-7. Line-item exclusions (cosmetic dental)
+3. Waiting period — intent match on diagnosis/treatment (`waiting_intent.py` + days from JSON)
+4. Claim-level exclusions — intent match (`exclusion_intent.py`); cosmetic dental deferred to line items
+5. Pre-authorization — intent match on test names (`pre_auth_intent.py` + threshold from JSON)
+6. Per-claim and annual sub-limits (dental exempt from per-claim limit — code constant)
+7. Line-item adjudication for dental/vision — covered/excluded lists from JSON (`line_items.py`)
 8. Co-pay calculation
 9. Network hospital discount
 10. Fraud: same-day multiple claims → MANUAL_REVIEW
@@ -441,9 +448,10 @@ Configured via `viewCapabilities.ts` and `chatConfig.ts`.
 
 | Script | Input | Output |
 |--------|-------|--------|
-| `run_test_cases.py` | `assignment/test_cases.json` | stdout pass/fail |
-| `run_ocr_test_cases.py` | `sample-documents/ocr_test_cases.json` | stdout pass/fail (live Groq OCR) |
-| `generate_eval_report.py` | `assignment/test_cases.json` | `EVAL_REPORT.md` |
+| `pytest` | `tests/` | 48 unit tests (no API key for policy/gatekeeper) |
+| `run_test_cases.py` | `assignment/test_cases.json` | stdout pass/fail (12 cases) |
+| `run_ocr_test_cases.py` | `sample-documents/ocr_test_cases.json` | stdout pass/fail (7 cases, live Groq OCR) |
+| `generate_eval_report.py` | assignment + OCR cases | `EVAL_REPORT.md` |
 
 ---
 
