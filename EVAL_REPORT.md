@@ -23,7 +23,7 @@ Source: `assignment/test_cases.json` (12 assignment cases)
 | TC011 | Component Failure — Graceful Degradation | `APPROVED` | INR 4,000 | PASS | — |
 | TC012 | Excluded Treatment | `REJECTED` | INR 0 | PASS | — |
 
-**Record live:** TC001 + TC004 on http://localhost:3000/ops. **Verify offline:** all 12 traces below.
+**Record live:** TC001 + TC004 on https://plum-ai-health-app.vercel.app/ops. **Verify offline:** all 12 traces below.
 
 ---
 
