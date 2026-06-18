@@ -1,12 +1,16 @@
 # Eval Report — Plum Claims Adjudication
 
-> Show the **summary tables** first, then **TC001** and **TC004** for live demos. OCR image cases (OCR-001–OCR-006) validate Groq vision on `sample-documents/`.
+ **summary tables** ->  **TC001** and **TC004** for live demos. 
+ 
+ OCR image cases (OCR-001–OCR-006) validate Groq vision on `sample-documents/`.
 
-Generated: 2026-06-18 19:09 UTC  
+
+
+Generated: 2026-06-18 19:44 UTC  
 Sources: `assignment/test_cases.json` (12 cases) · `sample-documents/ocr_test_cases.json` (7 cases)  
 **Summary: 12/12 assignment cases · 7/7 OCR cases matched expected outcomes**
 
-## Demo guide — show this table first
+## Demo guide — 
 
 | Case | Scenario | Decision | Approved | Match | Live demo? |
 |------|----------|----------|----------|-------|------------|
@@ -23,7 +27,6 @@ Sources: `assignment/test_cases.json` (12 cases) · `sample-documents/ocr_test_c
 | TC011 | Component Failure — Graceful Degradation | `APPROVED` | INR 4,000 | PASS | — |
 | TC012 | Excluded Treatment | `REJECTED` | INR 0 | PASS | — |
 
-**Record live:** TC001 + TC004 on http://localhost:3000/ops. **Verify offline:** traces below.
 
 ## OCR image cases — summary
 
@@ -36,6 +39,8 @@ Sources: `assignment/test_cases.json` (12 cases) · `sample-documents/ocr_test_c
 | OCR-005 | Image OCR — Pharmacy Claim | `APPROVED` | INR 800 | PASS |
 | OCR-006 | Image OCR — Dental Partial Approval | `PARTIAL` | INR 8,000 | PASS |
 | OCR-007 | OCR-only smoke test | OCR smoke | — | PASS |
+
+---
 
 ---
 
@@ -54,7 +59,9 @@ Member submits two prescriptions for a consultation claim that requires a prescr
 | Confidence | 1.0 |
 | Match | **PASS** |
 
-**Reason:** You uploaded 2 Prescription(s) but a Hospital Bill is required for CONSULTATION claims. Please upload the missing Hospital Bill.
+**Reason (ops / audit):** You uploaded 2 Prescription(s) but a Hospital Bill is required for CONSULTATION claims. Please upload the missing Hospital Bill.
+
+**Member-facing summary:** We need a bit more information before we can process your claim.
 
 ### Execution trace
 
@@ -126,7 +133,9 @@ Member uploads a valid prescription but a blurry, unreadable photo of their phar
 | Confidence | 1.0 |
 | Match | **PASS** |
 
-**Reason:** The following document(s) could not be read: blurry_bill.jpg. Please re-upload clear photos or scans of those documents.
+**Reason (ops / audit):** The following document(s) could not be read: blurry_bill.jpg. Please re-upload clear photos or scans of those documents.
+
+**Member-facing summary:** We need a bit more information before we can process your claim.
 
 ### Execution trace
 
@@ -196,7 +205,9 @@ The prescription is for Rajesh Kumar but the hospital bill is for a different pa
 | Confidence | 1.0 |
 | Match | **PASS** |
 
-**Reason:** Documents belong to different patients: Arjun Mehta and Rajesh Kumar. All documents must be for the same patient. Please verify and re-upload.
+**Reason (ops / audit):** Documents belong to different patients: Arjun Mehta and Rajesh Kumar. All documents must be for the same patient. Please verify and re-upload.
+
+**Member-facing summary:** We need a bit more information before we can process your claim.
 
 ### Execution trace
 
@@ -269,7 +280,9 @@ Complete, valid consultation claim with correct documents, valid member, covered
 | Confidence | 0.95 |
 | Match | **PASS** |
 
-**Reason:** Co-pay (10%) applied on ₹1,500 = ₹150 deducted. Final: ₹1,350.
+**Reason (ops / audit):** Co-pay (10%) applied on ₹1,500 = ₹150 deducted. Final: ₹1,350.
+
+**Member-facing summary:** Your claim is approved. You'll receive ₹1,350. Your co-pay (10%) has been deducted as per your policy.
 
 ### Execution trace
 
@@ -398,7 +411,9 @@ Member joined 2024-09-01. Claims for diabetes treatment on 2024-10-15, which is 
 | Confidence | 0.95 |
 | Match | **PASS** |
 
-**Reason:** Claim rejected due to waiting period. Eligible from 2024-11-30.
+**Reason (ops / audit):** Claim rejected due to waiting period. Eligible from 2024-11-30.
+
+**Member-facing summary:** This treatment falls within a waiting period on your policy.
 
 **Rejection reasons:** WAITING_PERIOD
 
@@ -513,7 +528,9 @@ Bill includes root canal treatment (covered) and teeth whitening (cosmetic, excl
 | Confidence | 0.95 |
 | Match | **PASS** |
 
-**Reason:** Partial approval: covered procedures approved; excluded items rejected. Teeth Whitening: COSMETIC_EXCLUSION
+**Reason (ops / audit):** Partial approval: covered procedures approved; excluded items rejected. Teeth Whitening: COSMETIC_EXCLUSION
+
+**Member-facing summary:** We approved ₹8,000 for the covered parts of your bill. Teeth Whitening wasn't covered — Cosmetic dental procedures like teeth whitening aren't covered under your policy.
 
 ### Execution trace
 
@@ -646,7 +663,9 @@ MRI scan costing ₹15,000 submitted without pre-authorization. Policy requires 
 | Confidence | 0.95 |
 | Match | **PASS** |
 
-**Reason:** Pre-authorization required for MRI above the policy threshold but was not obtained. Please obtain pre-authorization and resubmit.
+**Reason (ops / audit):** Pre-authorization required for MRI above the policy threshold but was not obtained. Please obtain pre-authorization and resubmit.
+
+**Member-facing summary:** This claim needs pre-authorization from Plum before the treatment.
 
 **Rejection reasons:** PRE_AUTH_MISSING
 
@@ -758,7 +777,9 @@ Claimed amount of ₹7,500 exceeds the per-claim limit of ₹5,000.
 | Confidence | 0.95 |
 | Match | **PASS** |
 
-**Reason:** Claimed amount ₹7,500 exceeds per-claim limit of ₹5,000.
+**Reason (ops / audit):** Claimed amount ₹7,500 exceeds per-claim limit of ₹5,000.
+
+**Member-facing summary:** The claim amount is above the limit allowed for a single claim.
 
 **Rejection reasons:** PER_CLAIM_EXCEEDED
 
@@ -868,7 +889,9 @@ Member EMP008 has already submitted 3 claims today before this one arrives. This
 | Confidence | 0.95 |
 | Match | **PASS** |
 
-**Reason:** Unusual claim pattern detected. Routed for manual review.
+**Reason (ops / audit):** Unusual claim pattern detected. Routed for manual review.
+
+**Member-facing summary:** We need a specialist on our team to review your claim. We'll get back to you within 2–3 business days.
 
 ### Execution trace
 
@@ -976,7 +999,9 @@ Valid claim at Apollo Hospitals, a network hospital. Network discount must be ap
 | Confidence | 0.95 |
 | Match | **PASS** |
 
-**Reason:** Network discount (20%) applied first on ₹4,500 = ₹3,600. Co-pay (10%) applied on ₹3,600 = ₹360 deducted. Final: ₹3,240.
+**Reason (ops / audit):** Network discount (20%) applied first on ₹4,500 = ₹3,600. Co-pay (10%) applied on ₹3,600 = ₹360 deducted. Final: ₹3,240.
+
+**Member-facing summary:** Your claim is approved. You'll receive ₹3,240. This includes your network hospital discount. Your co-pay (10%) has been deducted as per your policy.
 
 ### Execution trace
 
@@ -1109,7 +1134,9 @@ One component of your system fails mid-processing (simulate with the flag below)
 | Confidence | 0.6 |
 | Match | **PASS** |
 
-**Reason:** Claim approved for ₹4,000. Manual review recommended due to incomplete processing.
+**Reason (ops / audit):** Claim approved for ₹4,000. Manual review recommended due to incomplete processing.
+
+**Member-facing summary:** Your claim is approved. You'll receive ₹4,000.
 
 ### Execution trace
 
@@ -1233,7 +1260,9 @@ Member claims for bariatric consultation and a diet program. Obesity treatment i
 | Confidence | 0.95 |
 | Match | **PASS** |
 
-**Reason:** Treatment falls under policy exclusions (Obesity and weight loss programs).
+**Reason (ops / audit):** Treatment falls under policy exclusions (Obesity and weight loss programs).
+
+**Member-facing summary:** This treatment isn't covered under your policy exclusions.
 
 **Rejection reasons:** EXCLUDED_CONDITION
 

@@ -9,6 +9,7 @@ export type AdjudicationResult = {
   decision: unknown;
   approved_amount: unknown;
   reason: unknown;
+  member_reason?: unknown;
   confidence_score: unknown;
   execution_trace: unknown[];
   rejection_reasons: unknown[];

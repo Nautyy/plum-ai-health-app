@@ -20,6 +20,8 @@ export type ClaimResult = {
   decision: string;
   approved_amount: number;
   reason: string;
+  /** Plain-language summary for members (no internal codes) */
+  member_reason?: string;
   confidence_score: number;
   execution_trace: TraceEntry[];
   rejection_reasons?: string[];

@@ -67,6 +67,10 @@ const REJECTION_LABELS: Record<string, string> = {
   PRE_AUTH_MISSING:
     "This claim needs pre-authorization from Plum before the treatment. Please obtain approval and resubmit.",
   EXCLUDED_CONDITION: "This treatment isn't covered under your policy exclusions.",
+  COSMETIC_EXCLUSION:
+    "Cosmetic dental procedures like teeth whitening aren't covered under your policy.",
+  NOT_COVERED: "This item isn't listed as a covered benefit under your policy.",
+  EXCLUSION: "This item isn't covered under your policy.",
   POLICY_EVALUATION_ERROR:
     "We couldn't fully process your claim automatically. Our team will review it manually.",
 };
@@ -74,10 +78,7 @@ const REJECTION_LABELS: Record<string, string> = {
 export function memberRejectionReason(code: string): string {
   if (REJECTION_LABELS[code]) return REJECTION_LABELS[code];
   if (/^[A-Z0-9_]+$/.test(code)) {
-    return code
-      .toLowerCase()
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return "This part of your claim isn't covered under your policy.";
   }
   return code;
 }
@@ -389,4 +390,87 @@ export function hasMemberAmountDetail(result: ClaimResult): boolean {
     (result.line_item_decisions?.length ?? 0) > 0 ||
     Object.keys(breakdown).length > 0
   );
+}
+
+function amountMismatchNote(result: ClaimResult): string | null {
+  const breakdown = result.financial_breakdown ?? {};
+  const submitted = resolveSubmittedAmount(result, breakdown);
+  const documentTotal = asNumber(breakdown.document_total_amount);
+  if (submitted == null || documentTotal == null || submitted === documentTotal) {
+    return null;
+  }
+  return `The amount you entered (${formatInr(submitted)}) was different from what we read on your documents (${formatInr(documentTotal)}). We used the amounts on your bill for this decision.`;
+}
+
+/** Human-readable summary for the member portal — never expose internal reason codes. */
+export function memberFriendlyReason(result: ClaimResult): string {
+  if (result.member_reason?.trim()) {
+    return result.member_reason.trim();
+  }
+
+  const decision = result.decision;
+  const approved = result.approved_amount;
+  const lineItems = buildMemberLineItems(result);
+  const rejected = lineItems.filter((item) => !item.approved);
+  const mismatch = amountMismatchNote(result);
+
+  if (decision === "PARTIAL") {
+    const parts: string[] = [];
+    if (approved > 0) {
+      parts.push(`We approved ${formatInr(approved)} for the covered parts of your bill.`);
+    } else {
+      parts.push("Part of your claim was reviewed.");
+    }
+    for (const item of rejected) {
+      const reason = item.reason ?? "it isn't covered under your policy";
+      parts.push(`${item.description} wasn't covered — ${reason}`);
+    }
+    if (mismatch) parts.push(mismatch);
+    return parts.join(" ");
+  }
+
+  if (decision === "APPROVED") {
+    const parts: string[] = [];
+    if (approved > 0) {
+      parts.push(`Your claim is approved. You'll receive ${formatInr(approved)}.`);
+    } else {
+      parts.push("Your claim is approved.");
+    }
+    const breakdown = result.financial_breakdown ?? {};
+    const copay = asNumber(breakdown.copay_amount);
+    const network = asNumber(breakdown.network_discount_amount);
+    if (network != null && network > 0) {
+      parts.push("This includes your network hospital discount.");
+    }
+    if (copay != null && copay > 0) {
+      const pct = asNumber(breakdown.copay_percent);
+      parts.push(
+        pct != null
+          ? `Your co-pay (${pct}%) has been deducted as per your policy.`
+          : "Your co-pay has been deducted as per your policy."
+      );
+    }
+    if (mismatch) parts.push(mismatch);
+    return parts.join(" ");
+  }
+
+  if (decision === "REJECTED") {
+    if (result.rejection_reasons?.length) {
+      return result.rejection_reasons.map(memberRejectionReason).join(" ");
+    }
+    return "Your claim couldn't be approved under your current policy.";
+  }
+
+  if (decision === "MANUAL_REVIEW") {
+    return "We need a specialist on our team to review your claim. We'll get back to you within 2–3 business days.";
+  }
+
+  if (decision === "PENDING") {
+    if (result.rejection_reasons?.length) {
+      return result.rejection_reasons.map(memberRejectionReason).join(" ");
+    }
+    return "We need a bit more information before we can process your claim.";
+  }
+
+  return "We've processed your claim.";
 }

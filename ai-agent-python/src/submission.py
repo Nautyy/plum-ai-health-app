@@ -6,6 +6,7 @@ import json
 import uuid
 from typing import Any
 
+from member_messages import build_member_reason
 from schemas import (
     AdjudicationResponse,
     ClaimDocument,
@@ -103,14 +104,26 @@ def state_to_response(state: dict[str, Any]) -> AdjudicationResponse:
     trace = state.get("execution_trace") or []
     trace = [TraceEntry(**t) if isinstance(t, dict) else t for t in trace]
 
+    decision = state.get("decision", DecisionType.MANUAL_REVIEW)
+    rejection_reasons = state.get("rejection_reasons") or (policy.rejection_reasons if policy else [])
+    line_item_decisions = policy.line_item_decisions if policy else []
+    financial_breakdown = policy.financial_breakdown if policy else {}
+
     return AdjudicationResponse(
         claim_id=state.get("claim_id", "UNKNOWN"),
-        decision=state.get("decision", DecisionType.MANUAL_REVIEW),
+        decision=decision,
         approved_amount=float(state.get("approved_amount", 0)),
         reason=state.get("reason", ""),
+        member_reason=build_member_reason(
+            decision=decision,
+            approved_amount=float(state.get("approved_amount", 0)),
+            rejection_reasons=rejection_reasons,
+            line_item_decisions=line_item_decisions,
+            financial_breakdown=financial_breakdown,
+        ),
         confidence_score=float(state.get("confidence_score", 1.0)),
         execution_trace=trace,
-        rejection_reasons=state.get("rejection_reasons") or (policy.rejection_reasons if policy else []),
-        line_item_decisions=policy.line_item_decisions if policy else [],
-        financial_breakdown=policy.financial_breakdown if policy else {},
+        rejection_reasons=rejection_reasons,
+        line_item_decisions=line_item_decisions,
+        financial_breakdown=financial_breakdown,
     )

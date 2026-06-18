@@ -66,7 +66,7 @@ export function buildChatContext(
     claim_id: raw.claim_id,
     decision: raw.decision,
     approved_amount: raw.approved_amount,
-    reason: raw.reason,
+    reason: audience === 'member' ? raw.member_reason ?? raw.reason : raw.reason,
     confidence_score: raw.confidence_score,
     rejection_reasons: raw.rejection_reasons,
     line_item_decisions: raw.line_item_decisions,

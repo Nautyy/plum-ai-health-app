@@ -83,7 +83,8 @@ Returned by LangGraph → BFF → frontend. Schema: `AdjudicationResponse`.
   "claim_id": "CLM_A1B2C3D4",
   "decision": "APPROVED | PARTIAL | REJECTED | MANUAL_REVIEW | PENDING",
   "approved_amount": 1350,
-  "reason": "Human-readable explanation",
+  "reason": "Ops/adjudication rationale — may include internal codes and audit wording",
+  "member_reason": "Plain-language summary for employees — no internal codes",
   "confidence_score": 0.95,
   "execution_trace": [
     {
@@ -94,9 +95,9 @@ Returned by LangGraph → BFF → frontend. Schema: `AdjudicationResponse`.
       "degraded": false
     }
   ],
-  "rejection_reasons": ["waiting_period_not_met"],
+  "rejection_reasons": ["WAITING_PERIOD"],
   "line_item_decisions": [
-    { "description": "Teeth Whitening", "amount": 4000, "approved": false, "rejection_reason": "cosmetic_exclusion" }
+    { "description": "Teeth Whitening", "amount": 4000, "approved": false, "rejection_reason": "COSMETIC_EXCLUSION" }
   ],
   "financial_breakdown": {
     "claimed_amount": 1500,
@@ -119,6 +120,17 @@ Returned by LangGraph → BFF → frontend. Schema: `AdjudicationResponse`.
 | Duplicate record | 409 | `POST /claims/record` with existing `claim_id` |
 | Already approved | 409 | `POST /claims/approve` on settled claim |
 | Cannot approve PENDING | 409 | `POST /claims/approve` on document-validation stop |
+
+### Dual-audience messaging
+
+| Field | Audience | Content |
+|-------|----------|---------|
+| `reason` | Ops, audit, eval traces | Adjudication rationale — may embed codes like `COSMETIC_EXCLUSION`, amount-mismatch audit notes |
+| `member_reason` | Member UI, member chat | Plain-language summary built by `member_messages.py` — no internal codes |
+| `rejection_reasons[]` | Ops | Machine-readable policy failure codes |
+| `line_item_decisions[].rejection_reason` | Ops | Per-item codes; member UI maps these to friendly copy via `memberFriendly.ts` |
+
+The member portal shows `member_reason` under **In plain English**. Ops console shows `reason`, rejection codes, line items, and full trace.
 
 ---
 
@@ -378,7 +390,7 @@ Minimum confidence floor: **0.50**. If an `APPROVED` decision falls below **0.75
 ### format_response
 
 - **Input:** final graph state after `decision_consolidator`.
-- **Output:** `AdjudicationResponse` fields flattened for API consumers + final SUCCESS trace entry.
+- **Output:** `AdjudicationResponse` fields flattened for API consumers + `member_reason` (plain-language copy from `member_messages.py`) + final SUCCESS trace entry.
 - **Errors:** none — always runs.
 
 ---
@@ -424,8 +436,8 @@ Context is trimmed — base64 document content stripped to avoid token limits.
 ### Constraints
 
 - Answers only from provided adjudication context
-- Member audience: no internal pipeline jargon
-- Ops audience: may reference trace steps and degraded flags
+- Member audience: uses `member_reason` (not raw `reason`); no internal pipeline jargon or rejection codes
+- Ops audience: may reference trace steps, `reason`, rejection codes, and degraded flags
 
 ---
 
@@ -434,10 +446,12 @@ Context is trimmed — base64 document content stripped to avoid token limits.
 | Capability | Member (`/`) | Ops (`/ops`) |
 |------------|--------------|--------------|
 | Submit flow | adjudicate → preview → record | submit (adjudicate + save) |
+| Decision summary | `member_reason` — **In plain English** | `reason` — decision rationale |
 | Execution trace | Summary | Full expandable trace |
 | History sidebar | Hidden | Visible |
-| Chat after decision | Yes | Yes |
-| Financial breakdown | Friendly labels | Full audit keys |
+| Chat after decision | Yes (member copy) | Yes (technical copy) |
+| Financial breakdown | Friendly labels + line items | Full audit keys + raw codes |
+| Rejection codes | Hidden (mapped to friendly text) | Shown as `rejection_reasons[]` |
 | Ops settlement approve | Hidden | Visible (`POST /claims/approve`) |
 
 Configured via `viewCapabilities.ts` and `chatConfig.ts`.
@@ -451,7 +465,7 @@ Configured via `viewCapabilities.ts` and `chatConfig.ts`.
 | `pytest` | `tests/` | 48 unit tests (no API key for policy/gatekeeper) |
 | `run_test_cases.py` | `assignment/test_cases.json` | stdout pass/fail (12 cases) |
 | `run_ocr_test_cases.py` | `sample-documents/ocr_test_cases.json` | stdout pass/fail (7 cases, live Groq OCR) |
-| `generate_eval_report.py` | assignment + OCR cases | `EVAL_REPORT.md` |
+| `generate_eval_report.py` | assignment + OCR cases | `EVAL_REPORT.md` (`--skip-ocr` preserves OCR when Groq rate-limited) |
 
 ---
 

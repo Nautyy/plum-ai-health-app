@@ -10,6 +10,7 @@ export function buildChatClaimContext(result: ClaimResult): Record<string, unkno
     decision: result.decision,
     approved_amount: result.approved_amount,
     reason: result.reason,
+    member_reason: result.member_reason,
     confidence_score: result.confidence_score,
     rejection_reasons: result.rejection_reasons,
     line_item_decisions: result.line_item_decisions,

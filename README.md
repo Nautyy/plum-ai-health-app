@@ -16,7 +16,7 @@ When an employee submits a health insurance claim, they upload medical documents
 | Catch document problems early | `gatekeeper_agent` → `PENDING` with specific, actionable messages |
 | Extract structured information | `ocr_agent` (Groq vision) + LLM-first `extraction_agent` (regex gap-fill for prefilled fixtures) |
 | Make claim decisions | `policy_engine` — limits/coverage from `policy_terms.json`; intent rules in `policy/rules_config.py` |
-| Explain every decision | `execution_trace[]` on every response |
+| Explain every decision | `execution_trace[]` on every response; `member_reason` for employees, `reason` for ops/audit |
 | Handle failures gracefully | Degraded steps reduce confidence; pipeline never crashes |
 
 ### Decision types
@@ -75,7 +75,18 @@ flowchart TB
 
 - **LangGraph (Python)** — Multi-step AI pipeline with visible graph, Studio debugging, and deterministic policy logic in Python.
 - **NestJS BFF** — REST APIs, MongoDB, file forwarding, and chat without coupling the UI to the agent.
-- **Next.js** — Single codebase with `viewCapabilities` toggling member-friendly vs ops audit views.
+- **Next.js** — Single codebase with `viewCapabilities` toggling member-friendly vs ops audit views (`member_reason` vs `reason`).
+
+### Member vs ops messaging
+
+Every adjudication response includes two explanation fields:
+
+| Field | Who sees it | Example (TC006 partial dental) |
+|-------|-------------|--------------------------------|
+| `reason` | Ops console, eval traces, audit | `Partial approval… Teeth Whitening: COSMETIC_EXCLUSION` |
+| `member_reason` | Member UI, member chat | `We approved ₹8,000… Teeth Whitening wasn't covered — cosmetic dental procedures…` |
+
+Built in `ai-agent-python/src/member_messages.py`; rendered in the frontend via `memberFriendly.ts` and `DecisionCard.tsx`.
 
 ### Request flows
 
@@ -144,6 +155,8 @@ flowchart LR
 **TC001 — wrong document (early stop):** Two prescriptions submitted for a CONSULTATION claim that requires a hospital bill. Decision `PENDING`, gatekeeper fails with a specific message. Trace: 5 steps — extraction and policy never run.
 
 **TC004 — clean approval:** Valid consultation with prescription + hospital bill. Decision `APPROVED`, ₹1,350 after 10% co-pay. Trace: 8 steps through the full pipeline.
+
+**TC006 — partial dental:** Root canal approved, teeth whitening excluded. Decision `PARTIAL`, ₹8,000. Ops trace shows `COSMETIC_EXCLUSION` on the line item; member UI shows plain-language copy via `member_reason`.
 
 Full traces for all 12 cases: [EVAL_REPORT.md](./EVAL_REPORT.md).
 
@@ -253,10 +266,11 @@ Component interfaces: [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md).
 ```bash
 cd ai-agent-python
 
-uv run pytest                              # 48 unit tests
+uv run pytest                              # unit tests (incl. member_messages)
 uv run python scripts/run_test_cases.py    # 12 assignment cases
 uv run python scripts/run_ocr_test_cases.py  # 7 OCR image cases (requires GROQ_API_KEY)
-uv run python scripts/generate_eval_report.py
+uv run python scripts/generate_eval_report.py           # full regen (needs GROQ_API_KEY for OCR)
+uv run python scripts/generate_eval_report.py --skip-ocr  # assignment cases only; keeps OCR sections
 ```
 
 Test inputs: `assignment/test_cases.json`, `sample-documents/ocr_test_cases.json`. Policy config: `assignment/policy_terms.json` (mirrored at `ai-agent-python/config/policy_terms.json`) — **not modified**; intent phrases live in `ai-agent-python/src/policy/rules_config.py`.

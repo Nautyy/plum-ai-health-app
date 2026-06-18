@@ -10,6 +10,7 @@ import {
   formatInr,
   hasMemberAmountDetail,
   memberDecisionLabel,
+  memberFriendlyReason,
   memberNextSteps,
   memberRejectionReason,
 } from "./memberFriendly";
@@ -31,7 +32,8 @@ type Props = {
   recordError?: string | null;
 };
 
-function ActionRequiredBanner({ reason, friendly }: { reason: string; friendly: boolean }) {
+function ActionRequiredBanner({ result, friendly }: { result: ClaimResult; friendly: boolean }) {
+  const reason = friendly ? memberFriendlyReason(result) : result.reason;
   if (friendly) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -84,7 +86,7 @@ function MemberAmountDetails({ result }: { result: ClaimResult }) {
     <section className="rounded-xl border border-border bg-surface-muted p-4">
       <h3 className="text-sm font-semibold text-text">How your amount was calculated</h3>
       <p className="mt-1 text-xs text-text-muted">
-        Based on your policy rules and the amounts returned from adjudication.
+        Based on your policy and the amounts on your bill.
       </p>
 
       {detail.lineItems.length > 0 && (
@@ -407,6 +409,7 @@ export default function DecisionCard({
     ? memberDecisionLabel(result.decision)
     : result.decision.replace("_", " ");
   const isRecorded = Boolean(result.recorded || result.submitted_at);
+  const displayReason = caps.useFriendlyLabels ? memberFriendlyReason(result) : result.reason;
   const isOpsView = viewMode === "ops";
   const awaitingOpsApproval = isOpsView && !result.ops_approved && result.decision !== "PENDING";
 
@@ -448,7 +451,7 @@ export default function DecisionCard({
 
       <div className="space-y-4 p-5">
         {actionRequired && (
-          <ActionRequiredBanner reason={result.reason} friendly={caps.useFriendlyLabels} />
+          <ActionRequiredBanner result={result} friendly={caps.useFriendlyLabels} />
         )}
 
         {result.approved_amount > 0 && (
@@ -471,7 +474,7 @@ export default function DecisionCard({
             <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
               {caps.useFriendlyLabels ? "In plain English" : "Decision rationale"}
             </p>
-            <p className="mt-1 text-sm leading-relaxed text-text">{result.reason}</p>
+            <p className="mt-1 text-sm leading-relaxed text-text">{displayReason}</p>
           </div>
         )}
 
@@ -495,7 +498,7 @@ export default function DecisionCard({
           </div>
         )}
 
-        {result.rejection_reasons && result.rejection_reasons.length > 0 && (
+        {!caps.useFriendlyLabels && result.rejection_reasons && result.rejection_reasons.length > 0 && (
           <div className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800">
             <p className="font-medium">
               {caps.useFriendlyLabels ? "Why this wasn't approved" : "Rejection reasons"}

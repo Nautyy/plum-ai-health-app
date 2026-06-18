@@ -178,6 +178,7 @@ class AdjudicationResponse(BaseModel):
     decision: DecisionType
     approved_amount: float = 0
     reason: str = ""
+    member_reason: str = ""
     confidence_score: float = 1.0
     execution_trace: list[TraceEntry] = Field(default_factory=list)
     rejection_reasons: list[str] = Field(default_factory=list)

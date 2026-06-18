@@ -256,6 +256,7 @@ ${contextJson}`;
       decision: data.decision,
       approved_amount: Number(data.approved_amount ?? 0),
       reason: String(data.reason ?? ''),
+      member_reason: String(data.member_reason ?? ''),
       confidence_score: Number(data.confidence_score ?? 1),
       execution_trace: trace,
       rejection_reasons: (data.rejection_reasons as unknown[]) ?? [],
