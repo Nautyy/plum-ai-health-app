@@ -1,138 +1,46 @@
 # Plum Health Insurance Claims Platform
 
-Automated claims adjudication for Plum's AI Engineer assignment — document validation, structured extraction, policy rules from JSON, and explainable decisions with a full execution trace.
+Automated health insurance claims adjudication for Plum's AI Engineer assignment. The system accepts claim submissions with medical documents, validates them early, extracts structured data, applies policy rules from JSON, and returns explainable decisions with a full execution trace.
 
-
-# Deliverable 1 — Working System
-
-> Assignment: *A running application with a UI for claim submission and decision review. Deployed URL or clear local setup instructions.*
-
-## Live application
-
-| URL | Who | What you can do |
-|-----|-----|-----------------|
-| **http://localhost:3000** | Member | Submit claim → preview decision → save if happy |
-| **http://localhost:3000/ops** | Operations | Run test cases, full trace, history, chat, approve for settlement |
-
-### Member flow vs ops flow
-
-| | Member (`/`) | Ops (`/ops`) |
-|---|--------------|--------------|
-| Submit | `POST /claims/adjudicate` → preview | `POST /claims/submit` → adjudicate + save |
-| Save | `POST /claims/record` after preview | Automatic on submit |
-| Trace | Friendly summary | Full expandable trace + JSON details |
-| Demo cases | — | Sidebar: TC001–TC012 one-click |
-
-## Demo scenario 1 — early stop (TC001)
-
-**Show on:** http://localhost:3000/ops → demo sidebar → **TC001 Wrong Document Uploaded**
-
-| | Expected |
-|---|----------|
-| Decision | `PENDING` (not rejected — member must fix documents) |
-| Approved | ₹0 |
-| Message | *"You uploaded 2 Prescription(s) but a Hospital Bill is required for CONSULTATION claims…"* |
-
-**Trace to walk through (5 steps — policy never runs):**
-
-1. `ingest_submission` — SUCCESS  
-2. `ocr_agent` — SUCCESS  
-3. `gatekeeper_agent` — **FAILED** (`used_llm: false` — pure rules)  
-4. `decision_consolidator` — PENDING (`early_stop: true`)  
-5. `format_response` — SUCCESS  
-
-**Not in trace:** `extraction_agent`, `submission_validator`, `policy_engine` — conditional router skipped them.
-
-**Optional:** Switch to http://localhost:3000 — same result in plain English for members.
-
-## Demo scenario 2 — full approval (TC004)
-
-**Show on:** http://localhost:3000/ops → **TC004 Clean Consultation — Full Approval**
-
-| | Expected |
-|---|----------|
-| Decision | `APPROVED` |
-| Approved | **₹1,350** (10% co-pay on ₹1,500) |
-| Confidence | 0.95 |
-
-**Trace to walk through (8 steps):**
-
-1. `ingest_submission` — SUCCESS  
-2. `ocr_agent` — SUCCESS (pre-filled content, no vision API)  
-3. `gatekeeper_agent` — SUCCESS  
-4. `extraction_agent` — SUCCESS (`tier-1-regex`)  
-5. `submission_validator` — SUCCESS  
-6. `policy_engine` — APPROVED (co-pay in `financial_breakdown`)  
-7. `decision_consolidator` — APPROVED  
-8. `format_response` — SUCCESS  
-
-**Optional:** Ask chat *"why was co-pay applied?"* · Show history sidebar with saved run.
-
-## Local setup
-
-**Prerequisites:** Node.js 18+, Python 3.11+, [uv](https://docs.astral.sh/uv/), MongoDB, [Groq API key](https://console.groq.com)
-
-```bash
-git clone <your-repo-url>
-cd plum-claims-platform
-
-cp ai-agent-python/.env.example ai-agent-python/.env
-cp backend-nestjs/.env.example backend-nestjs/.env
-cp frontend-nextjs/.env.example frontend-nextjs/.env
-# Set GROQ_API_KEY in ai-agent-python/.env and backend-nestjs/.env
-
-cd ai-agent-python && uv sync && cd ..
-cd backend-nestjs && npm install && cd ..
-cd frontend-nextjs && npm install && cd ..
-```
-
-**Start (3 terminals):**
-
-```bash
-cd ai-agent-python && uv run langgraph dev --allow-blocking
-cd backend-nestjs && npm run build && npm start
-cd frontend-nextjs && npm run dev
-```
-
-| Service | Port | Env file |
-|---------|------|----------|
-| LangGraph agent | 2024 | `ai-agent-python/.env` |
-| NestJS BFF | 8000 | `backend-nestjs/.env` |
-| Next.js UI | 3000 | `frontend-nextjs/.env` |
-
-Key vars: `GROQ_API_KEY`, `MONGODB_URI`, `LANGGRAPH_BASE_URL=http://127.0.0.1:2024`, `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1`
-
-### Troubleshooting
-
-| Problem | Fix |
-|---------|-----|
-| Failed to fetch | Start backend; check `NEXT_PUBLIC_API_URL` |
-| 503 LangGraph | Start agent or fix `LANGGRAPH_BASE_URL` |
-| MongoDB error | Start local Mongo or set Atlas `MONGODB_URI` |
-
-### Deployment (optional)
-
-```
-Frontend (Vercel) → Backend (Render :8000) → Agent (Render)
-```
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for Render build/start commands.
+**Evaluation: 12/12 assignment test cases pass** — see [EVAL_REPORT.md](./EVAL_REPORT.md).
 
 ---
 
-# Deliverable 2 — Architecture Document
+## Overview
 
-> Assignment: *Components, interactions, why designed this way, what you rejected, limitations, 10× load.*
+When an employee submits a health insurance claim, they upload medical documents — bills, prescriptions, lab reports — along with basic details. This system automates the review process: document validation, information extraction, policy evaluation, and decision-making, with a complete audit trail for operations teams.
 
-## Design goals
+| Requirement | Implementation |
+|-------------|----------------|
+| Accept claim submissions | Member UI (`/`) and ops console (`/ops`) |
+| Catch document problems early | `gatekeeper_agent` → `PENDING` with specific, actionable messages |
+| Extract structured information | `ocr_agent` (Groq vision) + tiered `extraction_agent` (regex → LLM → fallback) |
+| Make claim decisions | `policy_engine` — deterministic rules from `policy_terms.json` |
+| Explain every decision | `execution_trace[]` on every response |
+| Handle failures gracefully | Degraded steps reduce confidence; pipeline never crashes |
 
-1. **Stop bad submissions early** — wrong/unreadable docs never reach policy logic  
-2. **Explain every decision** — full `execution_trace` on every response  
-3. **Degrade gracefully** — LLM/OCR failures lower confidence; pipeline never crashes  
-4. **Policy-driven** — all rules from `policy_terms.json`; nothing hardcoded  
-5. **Separate concerns** — LLMs for perception; Python for decisions  
+### Decision types
 
-## Tech stack — why three services?
+| Decision | Meaning |
+|----------|---------|
+| `PENDING` | Fix documents or form fields — not a final rejection |
+| `APPROVED` | Full coverage after policy rules |
+| `PARTIAL` | Some line items excluded (e.g. cosmetic dental) |
+| `REJECTED` | Policy exclusion, waiting period, limit exceeded |
+| `MANUAL_REVIEW` | Fraud signals or degraded AI components |
+
+### Application URLs
+
+| URL | Audience | Description |
+|-----|----------|-------------|
+| `http://localhost:3000` | Member | Submit claim → preview decision → record |
+| `http://localhost:3000/ops` | Operations | Adjudicate + save, full trace, history, test cases |
+
+---
+
+## Architecture
+
+Three services — the frontend never communicates with LangGraph directly.
 
 ```mermaid
 flowchart TB
@@ -157,21 +65,19 @@ flowchart TB
     API --> MONGO
 ```
 
-| Service | Stack | Why |
-|---------|-------|-----|
-| **ai-agent-python** | LangGraph + Groq | AI-heavy pipeline; visible graph; Studio debugging; deterministic policy in Python |
-| **backend-nestjs** | NestJS + MongoDB | BFF — REST, persistence, chat; frontend never calls LangGraph directly |
-| **frontend-nextjs** | Next.js 15 + Tailwind v4 | One codebase; `viewCapabilities` toggles member vs ops views |
+| Service | Stack | Port | Role |
+|---------|-------|------|------|
+| **ai-agent-python** | LangGraph + Groq | 2024 | Adjudication pipeline — OCR, gatekeeper, extraction, policy |
+| **backend-nestjs** | NestJS + MongoDB | 8000 | BFF — REST API, persistence, claim Q&A chat |
+| **frontend-nextjs** | Next.js 15 + Tailwind v4 | 3000 | Member + ops UI |
 
-| Choice | Alternative | Why chosen |
-|--------|-------------|------------|
-| **Groq** | OpenAI, local models | Fast, free tier, vision OCR |
-| **MongoDB** | PostgreSQL | Flexible JSON for traces + submissions |
-| **LangGraph** | Custom orchestrator | Conditional routing, debuggable multi-step pipeline |
+### Why three services?
 
-Policy loads from `ai-agent-python/config/policy_terms.json` — co-pay, waiting periods, exclusions, member roster. Change JSON, not code.
+- **LangGraph (Python)** — Multi-step AI pipeline with visible graph, Studio debugging, and deterministic policy logic in Python.
+- **NestJS BFF** — REST APIs, MongoDB, file forwarding, and chat without coupling the UI to the agent.
+- **Next.js** — Single codebase with `viewCapabilities` toggling member-friendly vs ops audit views.
 
-## How the pieces talk
+### Request flows
 
 ```mermaid
 sequenceDiagram
@@ -195,21 +101,13 @@ sequenceDiagram
     BFF-->>Ops: result + history
 ```
 
-- BFF invokes graph via **LangGraph SDK** (`claims_adjudication`)  
-- LangGraph down → BFF returns **503**; UI shows reconnect message  
-- **Claim Q&A chat** — Groq answers from trimmed adjudication context (no re-run)  
+Policy rules load from `ai-agent-python/config/policy_terms.json` (mirrors `assignment/policy_terms.json`). Coverage, co-pay, waiting periods, exclusions, and member roster are configuration — not hardcoded.
 
-### What we considered and rejected
+---
 
-| Rejected | Why |
-|----------|-----|
-| Single FastAPI monolith | Mixes AI, persistence, UI — hard to scale graph independently |
-| LLM-as-policy-judge | Not auditable for regulated insurance logic |
-| Full LLM gatekeeper | Slow, unpredictable; rules-first is testable without API key |
+## LangGraph pipeline
 
-## LangGraph pipeline — 8 nodes
-
-**Show on:** this diagram, LangGraph Studio (http://localhost:2024), or live trace in ops UI.
+Graph ID: `claims_adjudication`. Each node appends a `TraceEntry` to shared state.
 
 ```mermaid
 flowchart LR
@@ -226,98 +124,177 @@ flowchart LR
     FMT --> END((END))
 ```
 
-Each node appends a `TraceEntry` to `execution_trace[]`.
+| Node | Type | Responsibility |
+|------|------|----------------|
+| **ingest_submission** | Deterministic | Parse input, initialize state |
+| **ocr_agent** | Groq vision | Extract text from images/PDFs |
+| **gatekeeper_agent** | Rules + optional LLM | Required doc types, readability, patient/roster match |
+| **extraction_agent** | Regex → LLM → fallback | Patient, diagnosis, line items, amounts |
+| **submission_validator** | Deterministic | Cross-check form date and hospital vs documents |
+| **policy_engine** | Deterministic | Waiting periods, co-pay, limits, exclusions, fraud |
+| **decision_consolidator** | Deterministic | Final decision, confidence penalties |
+| **format_response** | Deterministic | Build API response |
 
-| # | Node | Type | What it does |
-|---|------|------|--------------|
-| 1 | **ingest_submission** | Deterministic | Parse input, init state; malformed → graceful PENDING |
-| 2 | **ocr_agent** | Groq vision | Text from images/PDFs; skip if pre-filled; UNREADABLE → gatekeeper stops |
-| 3 | **gatekeeper_agent** | Rules + optional LLM | Required doc types, readability, patient/roster match → **early stop** |
-| 4 | **extraction_agent** | Regex → LLM → fallback | Patient, diagnosis, line items, amounts; tier in trace |
-| 5 | **submission_validator** | Deterministic | Form date & hospital vs documents → **early stop** if mismatch |
-| 6 | **policy_engine** | Deterministic Python | Waiting periods, co-pay, limits, exclusions, fraud — **no LLM** |
-| 7 | **decision_consolidator** | Deterministic | Final decision; confidence penalties for degraded steps |
-| 8 | **format_response** | Deterministic | Build API response |
+**Early stop:** Gatekeeper or submission validator failure → `PENDING`, skips policy. Wrong documents never reach adjudication logic.
 
-### Decision types
+**LLM usage:** Groq for OCR, tier-2 extraction, gatekeeper ambiguity, and claim Q&A. Policy adjudication is pure Python — no LLM-as-judge.
 
-| Decision | When |
-|----------|------|
-| `PENDING` | Gatekeeper or submission validator early stop |
-| `APPROVED` | Full coverage after policy |
-| `PARTIAL` | Some line items excluded (e.g. cosmetic dental) |
-| `REJECTED` | Waiting period, exclusion, limit exceeded |
-| `MANUAL_REVIEW` | Fraud signals or degraded AI components |
+### Example outcomes
 
-### LLM vs deterministic
+**TC001 — wrong document (early stop):** Two prescriptions submitted for a CONSULTATION claim that requires a hospital bill. Decision `PENDING`, gatekeeper fails with a specific message. Trace: 5 steps — extraction and policy never run.
 
-```mermaid
-flowchart TB
-    subgraph Deterministic
-        GK[Gatekeeper rules]
-        SV[Submission validator]
-        POL[Policy engine]
-        DEC[Decision consolidator]
-    end
-    subgraph LLM["Groq"]
-        OCR[OCR vision]
-        EXT[Extraction tier-2]
-        GKLLM[Gatekeeper ambiguity]
-        CHAT[Claim Q&A]
-    end
-    OCR --> GK --> EXT --> SV --> POL --> DEC
-```
+**TC004 — clean approval:** Valid consultation with prescription + hospital bill. Decision `APPROVED`, ₹1,350 after 10% co-pay. Trace: 8 steps through the full pipeline.
 
-## Technical reflection (for demo closing)
-
-### Proud of: deterministic gatekeeper first
-
-Rules in `document_validator.py` — required types from JSON, patient roster, unreadable detection. LLM only when types are ambiguous. TC001–TC003 pass with `used_llm: false`. **32 unit tests** run without any API key. LLMs for perception; Python for decisions.
-
-### Would change: async claim queue
-
-Today BFF synchronously waits for LangGraph (up to 2 min). At Plum scale → POST returns `claim_id`, SQS/Redis queue, worker pool, poll/webhook. OCR microservice with document-hash cache for resubmissions.
-
-## Limitations & 10× scaling
-
-| Limitation today | At 10× load |
-|------------------|-------------|
-| Sync invoke per claim | Async queue + worker pool |
-| Groq vision OCR | Textract / Doc AI + human review queue |
-| Single policy file | Policy version store |
-| No auth | JWT at BFF |
-
-Full detail: [ARCHITECTURE.md](./ARCHITECTURE.md)
+Full traces for all 12 cases: [EVAL_REPORT.md](./EVAL_REPORT.md).
 
 ---
 
-## Other deliverables (show in wrap-up)
+## Design decisions
 
-| # | Deliverable | File | What to show |
-|---|-------------|------|--------------|
-| 3 | Component contracts | [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md) | I/O per component — gatekeeper, extraction, policy, BFF API |
-| 4 | Eval report | [EVAL_REPORT.md](./EVAL_REPORT.md) | 12/12 summary table + TC001/TC004 traces |
-| 5 | Demo video | [demo_video_script.txt](./demo_video_script.txt) | Full word-by-word script |
+| Decision | Chosen | Rejected |
+|----------|--------|----------|
+| Document validation | Deterministic gatekeeper; LLM only for ambiguity | Full LLM gatekeeper |
+| Extraction | Tier 1 regex → tier 2 Groq → tier 3 fallback | LLM-only extraction |
+| Policy | `DynamicPolicyEngine` reads JSON | LLM-as-policy-judge |
+| Architecture | 3 services (UI / BFF / agent) | Single monolith |
+| Member submit | Preview then record | Single submit without preview |
+
+### Key trade-offs
+
+**Deterministic gatekeeper first** — Rules in `document_validator.py` handle missing docs, wrong types, unreadable files, and patient mismatches. LLM runs only when document types are ambiguous. TC001–TC003 pass with `used_llm: false`. 32 unit tests run without an API key.
+
+**Async queue at scale** — Current design uses synchronous LangGraph invoke per claim. At higher volume, claims would be queued (SQS/Redis) with worker pools and poll/webhook completion.
+
+### Limitations & 10× scaling
+
+| Today | At 10× load |
+|-------|-------------|
+| Sync invoke per claim | Async queue + worker pool |
+| Groq vision OCR | Dedicated OCR service + document-hash cache |
+| Single policy file | Policy version store |
+| No auth | JWT + member verification at BFF |
+
+Extended rationale: [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+---
+
+## Local setup
+
+**Prerequisites:** Node.js 18+, Python 3.11+, [uv](https://docs.astral.sh/uv/), MongoDB, [Groq API key](https://console.groq.com)
+
+```bash
+git clone <your-repo-url>
+cd plum-claims-platform
+
+cp ai-agent-python/.env.example ai-agent-python/.env
+cp backend-nestjs/.env.example backend-nestjs/.env
+cp frontend-nextjs/.env.example frontend-nextjs/.env
+# Set GROQ_API_KEY in ai-agent-python/.env and backend-nestjs/.env
+
+cd ai-agent-python && uv sync && cd ..
+cd backend-nestjs && npm install && cd ..
+cd frontend-nextjs && npm install && cd ..
+```
+
+**Start all services (3 terminals):**
+
+```bash
+cd ai-agent-python && uv run langgraph dev --allow-blocking
+cd backend-nestjs && npm run build && npm start
+cd frontend-nextjs && npm run dev
+```
+
+| Service | Port | Key environment variables |
+|---------|------|---------------------------|
+| LangGraph agent | 2024 | `GROQ_API_KEY` |
+| NestJS BFF | 8000 | `MONGODB_URI`, `LANGGRAPH_BASE_URL`, `GROQ_API_KEY` |
+| Next.js UI | 3000 | `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1` |
+
+LangGraph Studio: **http://localhost:2024**
+
+### Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Failed to fetch | Start backend; verify `NEXT_PUBLIC_API_URL` |
+| 503 LangGraph | Start agent or check `LANGGRAPH_BASE_URL` |
+| MongoDB error | Start local MongoDB or configure Atlas `MONGODB_URI` |
+
+### Deployment
+
+```
+Frontend (Vercel) → Backend (Render) → Agent (Render)
+```
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for Render build and start commands.
+
+---
+
+## API reference
+
+Base URL: `http://localhost:8000/api/v1`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/claims/adjudicate` | Run adjudication — member preview |
+| `POST` | `/claims/record` | Persist a previewed claim |
+| `POST` | `/claims/submit` | Adjudicate + save — ops flow |
+| `POST` | `/claims/approve` | Ops settlement approval |
+| `POST` | `/claims/chat` | Q&A about a claim result |
+| `GET` | `/claims/history` | List past claims |
+| `GET` | `/claims/:claimId` | Full claim with execution trace |
+
+Component interfaces: [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md).
+
+---
 
 ## Testing
 
 ```bash
 cd ai-agent-python
+
 uv run pytest                              # 32 unit tests
-uv run python scripts/run_test_cases.py    # 12/12 assignment cases
+uv run python scripts/run_test_cases.py    # 12 assignment cases
 uv run python scripts/generate_eval_report.py
 ```
+
+Test input: `assignment/test_cases.json`. Policy config: `ai-agent-python/config/policy_terms.json`.
+
+---
+
+## Submission deliverables
+
+| Deliverable | Location |
+|-------------|----------|
+| Working system | This repository — setup above |
+| Architecture document | [ARCHITECTURE.md](./ARCHITECTURE.md) |
+| Component contracts | [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md) |
+| Eval report (12/12) | [EVAL_REPORT.md](./EVAL_REPORT.md) |
+
+---
 
 ## Project structure
 
 ```
 plum-claims-platform/
-├── ai-agent-python/       # LangGraph pipeline
+├── ai-agent-python/       # LangGraph adjudication pipeline
 ├── backend-nestjs/        # NestJS BFF + MongoDB
 ├── frontend-nextjs/       # Member + ops UI
 ├── assignment/            # Brief, test_cases.json, policy_terms.json
-├── ARCHITECTURE.md        # Extended architecture (same content, more depth)
-├── COMPONENT_CONTRACTS.md # Per-component I/O contracts
-├── EVAL_REPORT.md         # 12/12 results + full traces
-└── demo_video_script.txt  # Narration script
+├── ARCHITECTURE.md
+├── COMPONENT_CONTRACTS.md
+├── EVAL_REPORT.md
+└── README.md
 ```
+
+---
+
+## Tech stack
+
+| Technology | Purpose |
+|------------|---------|
+| **LangGraph** | Multi-step adjudication pipeline with conditional routing |
+| **Groq** | OCR, extraction, gatekeeper LLM, claim Q&A |
+| **NestJS** | REST BFF, validation, MongoDB |
+| **Next.js 15 + Tailwind v4** | Member and ops interfaces |
+| **MongoDB** | Claim history and execution traces |
