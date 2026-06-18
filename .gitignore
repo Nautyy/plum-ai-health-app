@@ -1,0 +1,19 @@
+# Dependencies & build output
+node_modules/
+.next/
+dist/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.langgraph/
+.langgraph_api/
+*.egg-info/
+
+# Secrets — never commit
+.env
+**/.env
+
+# OS
+.DS_Store
+Thumbs.db

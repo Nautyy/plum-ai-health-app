@@ -1,0 +1,193 @@
+{
+  "version": "1.0",
+  "description": "Manual OCR test cases using real image files in sample-documents/. These exercise Groq vision OCR (no pre-filled content_summary). Run via UI upload or scripts/run_ocr_test_cases.py.",
+  "prerequisites": [
+    "GROQ_API_KEY set in ai-agent-python/.env",
+    "LangGraph dev server running (uv run langgraph dev --allow-blocking)",
+    "Backend + frontend running for UI tests"
+  ],
+  "sample_files": {
+    "consultation/prescription_rajesh.jpg": "Clean prescription — Rajesh Kumar, Viral Fever",
+    "consultation/hospital_bill_rajesh.jpg": "Clean hospital bill — Rs 1500 total",
+    "pharmacy/prescription_sneha.jpg": "Pharmacy prescription — Sneha Reddy",
+    "pharmacy/pharmacy_bill_sneha.jpg": "Pharmacy bill — Rs 800",
+    "edge-cases/another_prescription.jpg": "Second prescription (wrong doc for consultation)",
+    "edge-cases/prescription_rajesh.jpg": "Prescription for patient mismatch test",
+    "edge-cases/bill_arjun.jpg": "Hospital bill for Arjun Mehta (mismatch)",
+    "edge-cases/blurry_pharmacy_bill.jpg": "Heavily blurred unreadable bill",
+    "dental/dental_bill_priya.jpg": "Dental bill with cosmetic + covered items"
+  },
+  "test_cases": [
+    {
+      "case_id": "OCR-001",
+      "case_name": "Image OCR — Clean Consultation Approval",
+      "description": "Upload real JPG images with no pasted text. OCR must extract patient, diagnosis, and line items, then approve with co-pay.",
+      "ui_steps": [
+        "Member ID: EMP001, Category: CONSULTATION, Date: 2024-11-01, Amount: 1500",
+        "Upload consultation/prescription_rajesh.jpg as PRESCRIPTION",
+        "Upload consultation/hospital_bill_rajesh.jpg as HOSPITAL_BILL",
+        "Do NOT paste prescription text — leave that field empty"
+      ],
+      "files": [
+        { "path": "consultation/prescription_rajesh.jpg", "actual_type": "PRESCRIPTION", "mime_type": "image/jpeg" },
+        { "path": "consultation/hospital_bill_rajesh.jpg", "actual_type": "HOSPITAL_BILL", "mime_type": "image/jpeg" }
+      ],
+      "input": {
+        "member_id": "EMP001",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "CONSULTATION",
+        "treatment_date": "2024-11-01",
+        "claimed_amount": 1500,
+        "ytd_claims_amount": 5000
+      },
+      "expected": {
+        "decision": "APPROVED",
+        "approved_amount": 1350,
+        "ocr_must_extract": ["Rajesh Kumar", "Viral Fever", "1500"],
+        "trace_must_include": "groq_vision"
+      }
+    },
+    {
+      "case_id": "OCR-002",
+      "case_name": "Image OCR — Wrong Document (Two Prescriptions)",
+      "description": "Consultation needs prescription + hospital bill. Upload two prescription images.",
+      "ui_steps": [
+        "Member ID: EMP001, Category: CONSULTATION",
+        "Upload consultation/prescription_rajesh.jpg + edge-cases/another_prescription.jpg",
+        "Both as PRESCRIPTION (or leave auto-detect)"
+      ],
+      "files": [
+        { "path": "consultation/prescription_rajesh.jpg", "actual_type": "PRESCRIPTION", "mime_type": "image/jpeg" },
+        { "path": "edge-cases/another_prescription.jpg", "actual_type": "PRESCRIPTION", "mime_type": "image/jpeg" }
+      ],
+      "input": {
+        "member_id": "EMP001",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "CONSULTATION",
+        "treatment_date": "2024-11-01",
+        "claimed_amount": 1500
+      },
+      "expected": {
+        "decision": "PENDING",
+        "system_must": [
+          "Stop before claim decision",
+          "Message must mention Prescription and Hospital Bill"
+        ]
+      }
+    },
+    {
+      "case_id": "OCR-003",
+      "case_name": "Image OCR — Patient Name Mismatch",
+      "description": "Prescription for Rajesh Kumar, hospital bill for Arjun Mehta.",
+      "ui_steps": [
+        "Member ID: EMP001, Category: CONSULTATION",
+        "Upload edge-cases/prescription_rajesh.jpg + edge-cases/bill_arjun.jpg"
+      ],
+      "files": [
+        { "path": "edge-cases/prescription_rajesh.jpg", "actual_type": "PRESCRIPTION", "mime_type": "image/jpeg" },
+        { "path": "edge-cases/bill_arjun.jpg", "actual_type": "HOSPITAL_BILL", "mime_type": "image/jpeg" }
+      ],
+      "input": {
+        "member_id": "EMP001",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "CONSULTATION",
+        "treatment_date": "2024-11-01",
+        "claimed_amount": 1500
+      },
+      "expected": {
+        "decision": "PENDING",
+        "system_must": [
+          "Detect different patient names",
+          "Surface Rajesh and Arjun in the message"
+        ]
+      }
+    },
+    {
+      "case_id": "OCR-004",
+      "case_name": "Image OCR — Unreadable Blurry Bill",
+      "description": "Good prescription image + heavily blurred pharmacy bill.",
+      "ui_steps": [
+        "Member ID: EMP004, Category: PHARMACY, Date: 2024-10-25, Amount: 800",
+        "Upload pharmacy/prescription_sneha.jpg + edge-cases/blurry_pharmacy_bill.jpg"
+      ],
+      "files": [
+        { "path": "pharmacy/prescription_sneha.jpg", "actual_type": "PRESCRIPTION", "mime_type": "image/jpeg" },
+        { "path": "edge-cases/blurry_pharmacy_bill.jpg", "actual_type": "PHARMACY_BILL", "mime_type": "image/jpeg" }
+      ],
+      "input": {
+        "member_id": "EMP004",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "PHARMACY",
+        "treatment_date": "2024-10-25",
+        "claimed_amount": 800
+      },
+      "expected": {
+        "decision": "PENDING",
+        "system_must": [
+          "Identify unreadable document",
+          "Ask member to re-upload — not outright reject"
+        ]
+      }
+    },
+    {
+      "case_id": "OCR-005",
+      "case_name": "Image OCR — Pharmacy Claim",
+      "description": "Full pharmacy claim using image-only documents.",
+      "ui_steps": [
+        "Member ID: EMP004, Category: PHARMACY",
+        "Upload pharmacy/prescription_sneha.jpg + pharmacy/pharmacy_bill_sneha.jpg"
+      ],
+      "files": [
+        { "path": "pharmacy/prescription_sneha.jpg", "actual_type": "PRESCRIPTION", "mime_type": "image/jpeg" },
+        { "path": "pharmacy/pharmacy_bill_sneha.jpg", "actual_type": "PHARMACY_BILL", "mime_type": "image/jpeg" }
+      ],
+      "input": {
+        "member_id": "EMP004",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "PHARMACY",
+        "treatment_date": "2024-10-25",
+        "claimed_amount": 800
+      },
+      "expected": {
+        "decision": "APPROVED",
+        "ocr_must_extract": ["Sneha Reddy"]
+      }
+    },
+    {
+      "case_id": "OCR-006",
+      "case_name": "Image OCR — Dental Partial Approval",
+      "description": "Single dental bill image with root canal (covered) + teeth whitening (excluded).",
+      "ui_steps": [
+        "Member ID: EMP002, Category: DENTAL, Date: 2024-10-15, Amount: 12000",
+        "Upload dental/dental_bill_priya.jpg as HOSPITAL_BILL"
+      ],
+      "files": [
+        { "path": "dental/dental_bill_priya.jpg", "actual_type": "HOSPITAL_BILL", "mime_type": "image/jpeg" }
+      ],
+      "input": {
+        "member_id": "EMP002",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "DENTAL",
+        "treatment_date": "2024-10-15",
+        "claimed_amount": 12000
+      },
+      "expected": {
+        "decision": "PARTIAL",
+        "approved_amount": 8000
+      }
+    },
+    {
+      "case_id": "OCR-007",
+      "case_name": "OCR-only smoke test",
+      "description": "Runs OCR step only on prescription image — quick check that Groq vision returns text.",
+      "files": [
+        { "path": "consultation/prescription_rajesh.jpg", "actual_type": "PRESCRIPTION", "mime_type": "image/jpeg" }
+      ],
+      "ocr_only": true,
+      "expected": {
+        "min_chars_extracted": 50,
+        "text_must_include": ["Rajesh", "Fever"]
+      }
+    }
+  ]
+}
