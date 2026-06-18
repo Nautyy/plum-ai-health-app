@@ -2,24 +2,7 @@
 
 Automated claims adjudication for Plum's AI Engineer assignment — document validation, structured extraction, policy rules from JSON, and explainable decisions with a full execution trace.
 
-> **Recording this demo?** Follow sections in order. This README covers **Deliverable 1 (Working System)** and **Deliverable 2 (Architecture)**. Use [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md) for contracts and [EVAL_REPORT.md](./EVAL_REPORT.md) for the eval walkthrough. Full narration: [demo_video_script.txt](./demo_video_script.txt).
-
----
-
-## Before you record — checklist
-
-| # | Action |
-|---|--------|
-| 1 | Start MongoDB |
-| 2 | Terminal 1: `cd ai-agent-python && uv run langgraph dev --allow-blocking` |
-| 3 | Terminal 2: `cd backend-nestjs && npm start` |
-| 4 | Terminal 3: `cd frontend-nextjs && npm run dev` |
-| 5 | Open tabs: [Member UI](http://localhost:3000) · [Ops console](http://localhost:3000/ops) · [LangGraph Studio](http://localhost:2024) (optional) |
-| 6 | Ops sidebar ready: **TC001** (early stop) then **TC004** (full approval) |
-
-**Eval result: 12/12 pass** — [EVAL_REPORT.md](./EVAL_REPORT.md)
-
----
+> **Recording this demo?** Follow sections in order. This README covers **Deliverable 1 (Working System)** and **Deliverable 2 (Architecture)**. Use [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md) for contracts and [EVAL_REPORT.md](./EVAL_REPORT.md) for the eval walkthrough. Full narration: [demo_video_script.txt](./demo_video_script.txt
 
 # Deliverable 1 — Working System
 
