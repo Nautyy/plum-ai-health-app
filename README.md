@@ -1,3 +1,73 @@
+# Plum Health Insurance Claims Platform
+
+Automated claims adjudication for Plum's AI Engineer assignment — document validation, structured extraction, policy rules from JSON, and explainable decisions with a full execution trace.
+
+
+# Deliverable 1 — Working System
+
+> Assignment: *A running application with a UI for claim submission and decision review. Deployed URL or clear local setup instructions.*
+
+## Live application
+
+| URL | Who | What you can do |
+|-----|-----|-----------------|
+| **http://localhost:3000** | Member | Submit claim → preview decision → save if happy |
+| **http://localhost:3000/ops** | Operations | Run test cases, full trace, history, chat, approve for settlement |
+
+### Member flow vs ops flow
+
+| | Member (`/`) | Ops (`/ops`) |
+|---|--------------|--------------|
+| Submit | `POST /claims/adjudicate` → preview | `POST /claims/submit` → adjudicate + save |
+| Save | `POST /claims/record` after preview | Automatic on submit |
+| Trace | Friendly summary | Full expandable trace + JSON details |
+| Demo cases | — | Sidebar: TC001–TC012 one-click |
+
+## Demo scenario 1 — early stop (TC001)
+
+**Show on:** http://localhost:3000/ops → demo sidebar → **TC001 Wrong Document Uploaded**
+
+| | Expected |
+|---|----------|
+| Decision | `PENDING` (not rejected — member must fix documents) |
+| Approved | ₹0 |
+| Message | *"You uploaded 2 Prescription(s) but a Hospital Bill is required for CONSULTATION claims…"* |
+
+**Trace to walk through (5 steps — policy never runs):**
+
+1. `ingest_submission` — SUCCESS  
+2. `ocr_agent` — SUCCESS  
+3. `gatekeeper_agent` — **FAILED** (`used_llm: false` — pure rules)  
+4. `decision_consolidator` — PENDING (`early_stop: true`)  
+5. `format_response` — SUCCESS  
+
+**Not in trace:** `extraction_agent`, `submission_validator`, `policy_engine` — conditional router skipped them.
+
+**Optional:** Switch to http://localhost:3000 — same result in plain English for members.
+
+## Demo scenario 2 — full approval (TC004)
+
+**Show on:** http://localhost:3000/ops → **TC004 Clean Consultation — Full Approval**
+
+| | Expected |
+|---|----------|
+| Decision | `APPROVED` |
+| Approved | **₹1,350** (10% co-pay on ₹1,500) |
+| Confidence | 0.95 |
+
+**Trace to walk through (8 steps):**
+
+1. `ingest_submission` — SUCCESS  
+2. `ocr_agent` — SUCCESS (pre-filled content, no vision API)  
+3. `gatekeeper_agent` — SUCCESS  
+4. `extraction_agent` — SUCCESS (`tier-1-regex`)  
+5. `submission_validator` — SUCCESS  
+6. `policy_engine` — APPROVED (co-pay in `financial_breakdown`)  
+7. `decision_consolidator` — APPROVED  
+8. `format_response` — SUCCESS  
+
+**Optional:** Ask chat *"why was co-pay applied?"* · Show history sidebar with saved run.
+
 ## Local setup
 
 **Prerequisites:** Node.js 18+, Python 3.11+, [uv](https://docs.astral.sh/uv/), MongoDB, [Groq API key](https://console.groq.com)
