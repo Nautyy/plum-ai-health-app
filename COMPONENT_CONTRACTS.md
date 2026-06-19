@@ -25,7 +25,6 @@ Precise interfaces for each significant component. Another engineer could reimpl
 |-----------|---------------------|------------------------------|
 | **TC001** early stop | Gatekeeper only | §4 Gatekeeper → §2 `PENDING` response |
 | **TC004** approval | All 8 graph nodes | §3–§8 full pipeline → §2 `APPROVED` response |
-| **TC011** degradation | Extraction fallback | §5 tier-3 + §8 confidence penalties |
 
 ---
 
