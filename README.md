@@ -14,7 +14,7 @@ Automated, **explainable** health insurance claims adjudication — built for Pl
 | **2** | Architecture document | This README → [§ Deliverable 2](#deliverable-2--architecture-document) · [ARCHITECTURE.md](./ARCHITECTURE.md) | Components, trade-offs, 10× scaling |
 | **3** | Component contracts | [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md) | Input / output / errors per component |
 | **4** | Eval report | [EVAL_REPORT.md](./EVAL_REPORT.md) | Decision + full trace + pass/fail per case |
-| **5** | Demo video (8–12 min) | [demo_video_script.txt](./demo_video_script.txt) | TC001 early stop · TC004 approval · proud / change |
+| **5** | Demo video (8–12 min) |  | TC001 early stop · TC004 approval · proud / change |
 
 **Repository:** GitHub/GitLab link *(add your URL)*  
 **Live deployment:**
