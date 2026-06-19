@@ -14,7 +14,7 @@ Automated, **explainable** health insurance claims adjudication — built for Pl
 | **2** | Architecture document | This README → [§ Deliverable 2](#deliverable-2--architecture-document) · [ARCHITECTURE.md](./ARCHITECTURE.md) | Components, trade-offs, 10× scaling |
 | **3** | Component contracts | [COMPONENT_CONTRACTS.md](./COMPONENT_CONTRACTS.md) | Input / output / errors per component |
 | **4** | Eval report | [EVAL_REPORT.md](./EVAL_REPORT.md) | Decision + full trace + pass/fail per case |
-| **5** | Demo video (8–12 min) | [demo_video_script.txt](./demo_video_script.txt) | TC001 early stop · TC004 approval · proud / change |
+| **5** | Demo video (8–12 min) | video link: https://drive.google.com/drive/folders/1s6ktvabJbgAeBC7_Ss8FXwp0BsM5C3XL?usp=sharing | TC001 early stop · TC004 approval · proud / change |
 
 **Repository:** GitHub/GitLab link *(add your URL)*  
 **Live deployment:**
@@ -362,7 +362,7 @@ uv run python scripts/generate_eval_report.py --skip-ocr   # assignment only; ke
 
 **Suggested recording:** TC001 (early stop) + TC004 (full approval) on `http://localhost:3000/ops`.
 
-Word-for-word script with timings: **[demo_video_script.txt](./demo_video_script.txt)**
+link for the video: https://drive.google.com/drive/folders/1s6ktvabJbgAeBC7_Ss8FXwp0BsM5C3XL?usp=sharing
 
 ---
 
