@@ -37,10 +37,9 @@ function ActionRequiredBanner({ result, friendly }: { result: ClaimResult; frien
   if (friendly) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="text-sm font-semibold text-amber-900">We need a bit more from you</p>
-        <p className="mt-1 text-sm leading-relaxed text-amber-950">{reason}</p>
+        <p className="text-sm leading-relaxed text-amber-950">{reason}</p>
         <p className="mt-2 text-xs text-amber-800">
-          Update your documents and submit the claim again — it only takes a minute.
+          Update your documents and submit again — it only takes a minute.
         </p>
       </div>
     );
@@ -469,12 +468,18 @@ export default function DecisionCard({
           </div>
         )}
 
-        {!actionRequired && (
+        {!actionRequired && displayReason && (
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-              {caps.useFriendlyLabels ? "In plain English" : "Decision rationale"}
+            {!caps.useFriendlyLabels && (
+              <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Decision rationale
+              </p>
+            )}
+            <p
+              className={`text-sm leading-relaxed text-text${!caps.useFriendlyLabels ? " mt-1" : ""}`}
+            >
+              {displayReason}
             </p>
-            <p className="mt-1 text-sm leading-relaxed text-text">{displayReason}</p>
           </div>
         )}
 

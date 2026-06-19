@@ -3,7 +3,7 @@ import type { ViewMode } from "@/types/claim";
 /**
  * Single source of truth for what each portal shows.
  *
- * Member → outcome + plain English + what to do next
+ * Member → outcome + summary + what to do next
  * Ops    → outcome + full trace + policy/financial detail + audit history
  * Test   → one-click assignment scenarios + full trace
  */

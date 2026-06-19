@@ -36,7 +36,7 @@ export const AUDIENCE_CONFIG: Record<Audience, AudienceConfig> = {
         role: "assistant",
         kind: "text",
         content:
-          "Hi, I'm your Plum Claims Assistant.\n\nI can help you submit a health insurance claim and explain the result in plain language. Most reimbursement claims with Plum are settled within a week.",
+          "Hi, I'm your Plum Claims Assistant.\n\nI can help you submit a health insurance claim and walk you through your result. Most reimbursement claims with Plum are settled within a week.",
       },
       {
         id: MEMBER_FORM_ID,
@@ -54,8 +54,8 @@ export const AUDIENCE_CONFIG: Record<Audience, AudienceConfig> = {
     placeholderAfter: "Ask me anything about your claim…",
     decisionIntro: (decision) =>
       decision === "PENDING"
-        ? "We couldn't finish reviewing your claim yet. See what's missing below, then check again or submit once corrected."
-        : "Here's your preliminary decision. Review the breakdown below — when you're ready, submit the claim to Plum for processing.",
+        ? "We couldn't complete your claim yet — see what's missing below."
+        : "Here's your claim decision. Review the details below, then submit to Plum when you're ready.",
     chatAudience: "member",
   },
   ops: {
